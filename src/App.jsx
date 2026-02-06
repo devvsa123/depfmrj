@@ -5,7 +5,7 @@ import {
 } from 'recharts';
 import { 
   Upload, FileSpreadsheet, BarChart3, TrendingUp, Calendar, 
-  AlertCircle, CheckCircle2, Sparkles, Loader2, MessageSquare, PackageCheck, Filter, Info,
+  AlertCircle, CheckCircle2, Sparkles, Loader2, MessageSquare, PackageCheck, Info,
   AlertTriangle, Clock, ArrowRightLeft, Activity, Target, Zap
 } from 'lucide-react';
 
@@ -25,8 +25,8 @@ const App = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [aiError, setAiError] = useState("");
 
-  // A chave de API deve ser mantida vazia para o ambiente de execução.
-  // Para deploy em produção (Vercel/Vite), utilize: import.meta.env.VITE_GEMINI_API_KEY
+  // No ambiente Canvas, a chave é injetada automaticamente. 
+  // Para deploy no Vite/Vercel, substitua "" por import.meta.env.VITE_GEMINI_API_KEY
   const apiKey = ""; 
 
   useEffect(() => {
@@ -296,7 +296,7 @@ const App = () => {
               <button 
                 onClick={analyzeWithAI}
                 disabled={isAnalyzing}
-                className="group p-6 rounded-3xl shadow-lg transition-all flex flex-col justify-center items-start bg-indigo-600 text-white hover:bg-indigo-700 active:scale-95 border-b-4 border-indigo-800 active:border-b-0 overflow-hidden"
+                className="group p-6 rounded-3xl shadow-lg transition-all flex flex-col justify-center items-start bg-indigo-600 text-white hover:bg-indigo-700 active:scale-95 overflow-hidden"
               >
                 <p className="text-[10px] font-bold uppercase tracking-widest mb-1 text-indigo-200 italic">Diagnóstico Sazonal</p>
                 <div className="flex items-center gap-2 w-full justify-between relative z-10">
