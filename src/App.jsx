@@ -25,7 +25,9 @@ const App = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [aiError, setAiError] = useState("");
 
-  const apiKey = "AIzaSyB7-09YzTnSfZC-tYpdzPBbUbSDoWKDjX0"; 
+  // A chave de API deve ser mantida vazia para o ambiente de execução.
+  // Para deploy em produção (Vercel/Vite), utilize: import.meta.env.VITE_GEMINI_API_KEY
+  const apiKey = ""; 
 
   useEffect(() => {
     if (window.XLSX) {
@@ -148,12 +150,11 @@ const App = () => {
 
   const globalSummary = useMemo(() => {
     if (data.length === 0) return null;
-    const total = data.length;
     const totalEntradas = chartData.reduce((acc, c) => acc + (c.entradas || 0), 0);
     const totalSeparacoes = chartData.reduce((acc, c) => acc + (c.separacoes || 0), 0);
     const avgEntradasDiarias = (totalEntradas / chartData.length).toFixed(2);
     const avgSeparacoesDiarias = (totalSeparacoes / chartData.length).toFixed(2);
-    return { total, avgEntradasDiarias, avgSeparacoesDiarias, totalDias: chartData.length };
+    return { total: data.length, avgEntradasDiarias, avgSeparacoesDiarias, totalDias: chartData.length };
   }, [data, chartData]);
 
   const selectionSummary = useMemo(() => {
@@ -180,7 +181,6 @@ const App = () => {
 
     const viewSlice = chartData.slice(visibleRange.startIndex, visibleRange.endIndex + 1);
     
-    // Prompt estratégico REFINADO com foco em SAZONALIDADE e equilíbrio
     const systemPrompt = `Você é um Consultor Estratégico de Operações Senior especializado em Logística. 
     Sua missão é fornecer um diagnóstico equilibrado sobre o fluxo de pedidos.
     
@@ -223,7 +223,8 @@ const App = () => {
         return result.candidates?.[0]?.content?.parts?.[0]?.text;
       } catch (err) {
         if (retries < 5) {
-          await new Promise(res => setTimeout(res, Math.pow(2, retries) * 1000));
+          const delay = Math.pow(2, retries) * 1000;
+          await new Promise(res => setTimeout(res, delay));
           return callWithRetry(retries + 1);
         }
         throw err;
@@ -243,14 +244,13 @@ const App = () => {
   return (
     <div className="min-h-screen bg-slate-50 p-4 md:p-8 font-sans text-slate-900 leading-tight">
       <div className="max-w-7xl mx-auto">
-        {/* Header */}
         <header className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="bg-indigo-600 p-2.5 rounded-2xl shadow-lg">
               <Activity className="text-white" size={24} />
             </div>
             <div>
-              <h1 className="text-2xl font-black text-slate-800 tracking-tight">Supply Chain <span className="text-indigo-600">Expert DepFMRJ</span></h1>
+              <h1 className="text-2xl font-black text-slate-800 tracking-tight">Supply Chain <span className="text-indigo-600 font-bold underline decoration-indigo-200 decoration-2">Expert DepFMRJ</span></h1>
               <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">Visibilidade Sazonal e Operacional</p>
             </div>
           </div>
@@ -264,17 +264,16 @@ const App = () => {
 
         {data.length > 0 ? (
           <div className="space-y-6">
-            {/* KPI Section */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 hover:shadow-md transition-all">
-                <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-1">Entradas (Corte)</p>
+              <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 hover:shadow-md transition-all group">
+                <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-1 group-hover:text-indigo-600 transition-colors">Entradas (Corte)</p>
                 <p className="text-3xl font-black text-slate-800">{selectionSummary.entradas.toLocaleString()}</p>
                 <div className="mt-2 text-[10px] text-indigo-600 font-bold flex items-center gap-1">
                   <TrendingUp size={12} /> {selectionSummary.mediaEntradasPeriodo}/dia
                 </div>
               </div>
 
-              <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 hover:shadow-md transition-all">
+              <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 hover:shadow-md transition-all group">
                 <p className="text-emerald-500 text-[10px] font-black uppercase tracking-widest mb-1 italic">Saídas (Corte)</p>
                 <p className="text-3xl font-black text-slate-800">{selectionSummary.separacoes.toLocaleString()}</p>
                 <div className="mt-2 text-[10px] text-emerald-600 font-bold flex items-center gap-1">
@@ -288,7 +287,7 @@ const App = () => {
                   <p className={`text-3xl font-black ${selectionSummary.balanco >= 0 ? 'text-emerald-700' : 'text-orange-700'}`}>
                     {selectionSummary.balanco > 0 ? `+${selectionSummary.balanco.toLocaleString()}` : selectionSummary.balanco.toLocaleString()}
                   </p>
-                  <span className={`text-[8px] px-2 py-0.5 rounded-full font-bold uppercase ${selectionSummary.balanco >= 0 ? 'bg-emerald-200 text-emerald-800' : 'bg-orange-200 text-orange-800'}`}>
+                  <span className={`text-[8px] px-2 py-0.5 rounded-full font-bold uppercase ${selectionSummary.balanco >= 0 ? 'bg-emerald-200 text-emerald-800 shadow-sm' : 'bg-orange-200 text-orange-800 shadow-sm'}`}>
                     {selectionSummary.status}
                   </span>
                 </div>
@@ -297,42 +296,50 @@ const App = () => {
               <button 
                 onClick={analyzeWithAI}
                 disabled={isAnalyzing}
-                className="group p-6 rounded-3xl shadow-lg transition-all flex flex-col justify-center items-start bg-indigo-600 text-white hover:bg-indigo-700 active:scale-95 overflow-hidden"
+                className="group p-6 rounded-3xl shadow-lg transition-all flex flex-col justify-center items-start bg-indigo-600 text-white hover:bg-indigo-700 active:scale-95 border-b-4 border-indigo-800 active:border-b-0 overflow-hidden"
               >
                 <p className="text-[10px] font-bold uppercase tracking-widest mb-1 text-indigo-200 italic">Diagnóstico Sazonal</p>
                 <div className="flex items-center gap-2 w-full justify-between relative z-10">
-                  <span className="text-lg font-bold">Gerar Relatório ✨</span>
-                  {isAnalyzing ? <Loader2 size={20} className="animate-spin" /> : <Sparkles size={20} />}
+                  <span className="text-lg font-black tracking-tight">Gerar Relatório ✨</span>
+                  {isAnalyzing ? <Loader2 size={24} className="animate-spin text-white" /> : <Sparkles size={24} className="text-blue-300" />}
                 </div>
               </button>
             </div>
 
-            {/* AI Diagnosis Card - DESIGN LIMPO E SEM MARKDOWN */}
             {(aiAnalysis || aiError) && (
-              <div className="p-1 bg-gradient-to-br from-indigo-100 to-blue-100 rounded-[34px] shadow-xl">
+              <div className="p-1 bg-gradient-to-br from-indigo-100 to-blue-50 rounded-[34px] shadow-xl animate-in zoom-in-95 duration-500">
                 <div className="p-8 md:p-10 bg-white rounded-[32px]">
                   <div className="flex items-center gap-3 mb-8">
-                    <div className="p-3 rounded-2xl bg-indigo-600 text-white shadow-lg">
-                      <Target size={24} />
+                    <div className="p-3.5 rounded-2xl bg-indigo-600 text-white shadow-lg shadow-indigo-100 border border-indigo-500">
+                      <Target size={26} />
                     </div>
                     <div>
-                      <h3 className="text-xl font-black text-slate-800 tracking-tight">Relatório de Consultoria Operacional</h3>
-                      <p className="text-[10px] text-slate-400 font-bold uppercase">Integração de médias históricas e dados do corte</p>
+                      <h3 className="text-2xl font-black text-slate-800 tracking-tight">Relatório de Consultoria Operacional</h3>
+                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Integração de médias históricas e dados do corte</p>
                     </div>
                   </div>
                   
-                  <div className="text-slate-700 whitespace-pre-wrap leading-relaxed text-base font-medium font-sans">
+                  <div className="text-slate-700 whitespace-pre-wrap leading-relaxed text-base font-medium font-sans bg-slate-50/50 p-6 rounded-2xl border border-slate-100 italic">
                     {aiAnalysis || aiError}
                   </div>
                 </div>
               </div>
             )}
 
-            {/* Main Graph Card */}
-            <div className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-200">
-              <div className="mb-10">
-                <h3 className="text-xl font-black text-slate-800">Tendência de Fluxo e Sazonalidade</h3>
-                <p className="text-sm text-slate-400 mt-1 italic font-medium">Os indicadores acima sincronizam automaticamente com a barra de seleção inferior.</p>
+            <div className="bg-white p-8 md:p-10 rounded-[40px] shadow-sm border border-slate-200">
+              <div className="mb-12 flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
+                <div>
+                  <h3 className="text-2xl font-black text-slate-800 tracking-tighter">Tendência de Fluxo e Sazonalidade</h3>
+                  <p className="text-sm text-slate-400 mt-1 italic font-medium">Os indicadores acima sincronizam automaticamente com a barra de seleção inferior.</p>
+                </div>
+                <div className="flex gap-6 bg-slate-50 p-4 rounded-2xl border border-slate-100 shadow-inner">
+                   <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                      <span className="w-3 h-3 rounded-full bg-blue-500 shadow-md"></span> Liberação
+                   </div>
+                   <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                      <span className="w-3 h-3 rounded-full bg-emerald-500 shadow-md"></span> Separação
+                   </div>
+                </div>
               </div>
               
               <div className="h-[500px] w-full">
@@ -341,36 +348,42 @@ const App = () => {
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                     <XAxis 
                       dataKey="date" 
-                      tick={{ fontSize: 9, fill: '#94a3b8', angle: -35, textAnchor: 'end', fontWeight: 600 }} 
+                      tick={{ fontSize: 10, fill: '#94a3b8', angle: -35, textAnchor: 'end', fontWeight: 700 }} 
                       axisLine={false}
-                      height={80}
+                      tickLine={false}
+                      height={90}
                       tickFormatter={(val) => {
                         const d = new Date(val);
                         return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' });
                       }}
                       interval="preserveStartEnd"
-                      minTickGap={10}
+                      minTickGap={15}
                     />
-                    <YAxis tick={{fontSize: 10, fill: '#94a3b8', fontWeight: 600}} axisLine={false} tickLine={false} />
+                    <YAxis tick={{fontSize: 10, fill: '#94a3b8', fontWeight: 700}} axisLine={false} tickLine={false} />
                     <Tooltip 
                       contentStyle={{ borderRadius: '24px', border: 'none', boxShadow: '0 25px 50px -12px rgb(0 0 0 / 0.15)', padding: '20px' }}
                       labelFormatter={(val) => `Data: ${new Date(val).toLocaleDateString('pt-BR')}`}
                     />
-                    <Legend verticalAlign="top" align="right" iconType="circle" wrapperStyle={{ paddingBottom: '40px', fontSize: '11px', fontWeight: 700 }} />
+                    <Legend 
+                      verticalAlign="top" 
+                      align="right" 
+                      iconType="circle" 
+                      wrapperStyle={{ paddingBottom: '40px', fontSize: '11px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '1px' }} 
+                    />
                     
-                    <Bar dataKey="entradas" name="Vol. Entrada" fill="#e2e8f0" barSize={8} radius={[4,4,0,0]} opacity={0.6} />
+                    <Bar dataKey="entradas" name="Vol. Entrada" fill="#e2e8f0" barSize={10} radius={[5,5,0,0]} opacity={0.5} />
                     
-                    <Line type="monotone" dataKey="ma7_entradas" name="MM7 Liberação" stroke="#3b82f6" strokeWidth={3} dot={false} activeDot={{ r: 6 }} />
-                    <Line type="monotone" dataKey="ma7_separacoes" name="MM7 Separação" stroke="#10b981" strokeWidth={3} dot={false} activeDot={{ r: 6 }} />
+                    <Line type="monotone" dataKey="ma7_entradas" name="MM7 Liberação" stroke="#3b82f6" strokeWidth={4} dot={false} activeDot={{ r: 8, strokeWidth: 0 }} />
+                    <Line type="monotone" dataKey="ma7_separacoes" name="MM7 Separação" stroke="#10b981" strokeWidth={4} dot={false} activeDot={{ r: 8, strokeWidth: 0 }} />
                     
-                    <Line type="monotone" dataKey="ma30_entradas" name="Histórico (30d)" stroke="#1e40af" strokeWidth={1} strokeDasharray="5 5" dot={false} />
-                    <Line type="monotone" dataKey="ma30_separacoes" name="Histórico (30d)" stroke="#065f46" strokeWidth={1} strokeDasharray="5 5" dot={false} />
+                    <Line type="monotone" dataKey="ma30_entradas" name="Histórico (30d)" stroke="#1e40af" strokeWidth={1.5} strokeDasharray="6 4" dot={false} />
+                    <Line type="monotone" dataKey="ma30_separacoes" name="Histórico (30d)" stroke="#065f46" strokeWidth={1.5} strokeDasharray="6 4" dot={false} />
 
                     <Brush 
                       dataKey="date" 
                       height={50} 
-                      stroke="#cbd5e1" 
-                      fill="#f8fafc"
+                      stroke="#e2e8f0" 
+                      fill="#fff"
                       onChange={(r) => r && setVisibleRange({ startIndex: r.startIndex, endIndex: r.endIndex })}
                       tickFormatter={(val) => {
                          const d = new Date(val);
@@ -381,15 +394,29 @@ const App = () => {
                 </ResponsiveContainer>
               </div>
             </div>
+            
+            <div className="bg-white p-8 rounded-[40px] border border-slate-200 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
+               <div className="flex items-center gap-4 text-sm font-bold text-slate-400 uppercase tracking-widest">
+                  <Activity size={20} className="text-indigo-600" />
+                  <span>Sincronizado com {globalSummary.totalDias} dias de histórico operacional</span>
+               </div>
+               {globalSummary.semDataEntrada > 0 && (
+                <div className="flex items-center gap-2 text-amber-600 text-[10px] font-black uppercase bg-amber-50 px-5 py-2.5 rounded-full border border-amber-100 shadow-sm">
+                  <AlertTriangle size={16} />
+                  {globalSummary.semDataEntrada.toLocaleString()} Pedidos ignorados por falta de data válida
+                </div>
+               )}
+            </div>
           </div>
         ) : (
-          <div className="mt-32 flex flex-col items-center justify-center text-center">
-            <div className="w-40 h-40 bg-white rounded-[50px] shadow-2xl flex items-center justify-center mb-8 border border-slate-100">
-              <FileSpreadsheet size={60} className="text-indigo-500 opacity-20" />
+          <div className="mt-32 flex flex-col items-center justify-center text-center animate-in fade-in zoom-in duration-700">
+            <div className="w-52 h-52 bg-white rounded-[70px] shadow-2xl flex items-center justify-center mb-10 border border-slate-50 relative">
+               <div className="absolute inset-0 bg-indigo-500/5 animate-pulse rounded-[70px]"></div>
+              <FileSpreadsheet size={80} className="text-indigo-600 opacity-20 relative z-10" />
             </div>
-            <h2 className="text-2xl font-black text-slate-800 tracking-tight">Supply Monitor AI</h2>
-            <p className="text-slate-400 text-sm max-w-sm mt-2 leading-relaxed font-medium">
-              Analise tendências históricas, picos sazonais e o balanço do seu backlog.
+            <h2 className="text-4xl font-black text-slate-800 tracking-tighter">Supply Expert DepFMRJ</h2>
+            <p className="text-slate-400 text-sm max-w-sm mt-4 leading-relaxed font-bold uppercase tracking-widest opacity-60">
+              Analise tendências, identifique picos sazonais e gerencie sua capacidade operacional.
             </p>
           </div>
         )}
