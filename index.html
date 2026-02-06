@@ -1,14 +1,255 @@
 <!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Supply Chain Expert</title>
-    <!-- Carrega o Tailwind via CDN para facilitar se não usar build local pesado -->
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Supply Chain Expert - DepFMRJ</title>
+    
+    <!-- Scripts Necessários (CDNs) -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
-  </head>
-  <body>
+    <script src="https://unpkg.com/recharts/lib/Recharts.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800;900&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .recharts-brush-texts { font-size: 10px; font-weight: bold; }
+    </style>
+</head>
+<body class="bg-slate-50">
     <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
-  </body>
+
+    <script type="text/babel">
+        const { useState, useMemo, useEffect } = React;
+
+        // Ícones Lucide
+        const Icon = ({ name, size = 24, className = "" }) => {
+            const [iconSvg, setIconSvg] = useState("");
+            useEffect(() => {
+                if (window.lucide) {
+                    const icon = window.lucide.icons[name];
+                    if (icon) {
+                        const svg = icon.toSvg({ size, class: className });
+                        setIconSvg(svg);
+                    }
+                }
+            }, [name, size, className]);
+            return <span dangerouslySetInnerHTML={{ __html: iconSvg }} />;
+        };
+
+        const App = () => {
+            // Destructuring Recharts dentro do componente para garantir que window.Recharts esteja disponível
+            const { 
+                LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, 
+                ResponsiveContainer, ComposedChart, Bar, Brush 
+            } = window.Recharts || {};
+
+            const [data, setData] = useState([]);
+            const [fileName, setFileName] = useState("");
+            const [visibleRange, setVisibleRange] = useState({ startIndex: 0, endIndex: 0 });
+            const [aiAnalysis, setAiAnalysis] = useState("");
+            const [isAnalyzing, setIsAnalyzing] = useState(false);
+            const [aiError, setAiError] = useState("");
+
+            // Chave de API - No trabalho, substitua pela sua chave fixa ou use um prompt
+            const apiKey = ""; 
+
+            const safeGetISODate = (val) => {
+                if (!val) return null;
+                if (val instanceof Date) return val.toISOString().split('T')[0];
+                if (typeof val === 'number') {
+                    const date = new Date(Math.round((val - 25569) * 86400 * 1000));
+                    return date.toISOString().split('T')[0];
+                }
+                if (typeof val === 'string') {
+                    const brMatch = val.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+                    if (brMatch) return `${brMatch[3]}-${brMatch[2].padStart(2, '0')}-${brMatch[1].padStart(2, '0')}`;
+                }
+                return null;
+            };
+
+            const handleFileUpload = (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                setFileName(file.name);
+                const reader = new FileReader();
+                reader.onload = (evt) => {
+                    const bstr = evt.target.result;
+                    const wb = XLSX.read(bstr, { type: 'binary', cellDates: true });
+                    const ws = wb.Sheets[wb.SheetNames[0]];
+                    const jsonData = XLSX.utils.sheet_to_json(ws);
+                    
+                    const normalized = jsonData.map(item => {
+                        const newItem = {};
+                        Object.keys(item).forEach(key => {
+                            const normKey = key.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+                            newItem[normKey] = item[key];
+                        });
+                        return newItem;
+                    }).filter(item => String(item.STATUS || "").toUpperCase() !== "CANCELADO");
+
+                    setData(normalized);
+                };
+                reader.readAsBinaryString(file);
+            };
+
+            const chartData = useMemo(() => {
+                if (data.length === 0) return [];
+                const stats = {};
+                data.forEach(item => {
+                    const e = safeGetISODate(item.DATA_ENTRADA);
+                    const s = safeGetISODate(item.DATA_SEPARACAO || item.DATA_SEPARAÇÃO);
+                    if (e) { stats[e] = stats[e] || { date: e, entradas: 0, separacoes: 0 }; stats[e].entradas++; }
+                    if (s) { stats[s] = stats[s] || { date: s, entradas: 0, separacoes: 0 }; stats[s].separacoes++; }
+                });
+                const sorted = Object.values(stats).sort((a, b) => new Date(a.date) - new Date(b.date));
+                return sorted.map((day, idx) => {
+                    const calcMA = (p, key) => {
+                        if (idx < p - 1) return null;
+                        const sum = sorted.slice(idx - (p - 1), idx + 1).reduce((a, b) => a + (b[key] || 0), 0);
+                        return parseFloat((sum / p).toFixed(2));
+                    };
+                    return { ...day, ma7_e: calcMA(7, 'entradas'), ma7_s: calcMA(7, 'separacoes'), ma30_e: calcMA(30, 'entradas'), ma30_s: calcMA(30, 'separacoes') };
+                });
+            }, [data]);
+
+            useEffect(() => { if (chartData.length > 0) setVisibleRange({ startIndex: 0, endIndex: chartData.length - 1 }); }, [chartData]);
+
+            const globalAvg = useMemo(() => {
+                if (!chartData.length) return { e: 0, s: 0 };
+                const te = chartData.reduce((a, b) => a + b.entradas, 0);
+                const ts = chartData.reduce((a, b) => a + b.separacoes, 0);
+                return { e: (te / chartData.length).toFixed(2), s: (ts / chartData.length).toFixed(2) };
+            }, [chartData]);
+
+            const selection = useMemo(() => {
+                if (!chartData.length) return null;
+                const slice = chartData.slice(visibleRange.startIndex, visibleRange.endIndex + 1);
+                const e = slice.reduce((a, b) => a + b.entradas, 0);
+                const s = slice.reduce((a, b) => a + b.separacoes, 0);
+                return { e, s, bal: s - e, me: (e / slice.length).toFixed(2), ms: (s / slice.length).toFixed(2) };
+            }, [chartData, visibleRange]);
+
+            const analyze = async () => {
+                if (!selection || isAnalyzing) return;
+                setIsAnalyzing(true); setAiError("");
+                const prompt = `Analise fluxo logístico: Histórico(Entrada:${globalAvg.e}, Saída:${globalAvg.s}). Atual(Entrada:${selection.me}, Saída:${selection.ms}, Saldo:${selection.bal}). Fale sobre sazonalidade e gargalo. Use letras maiúsculas para títulos, emojis, SEM asteriscos, direto.`;
+                
+                try {
+                    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+                    });
+                    const result = await res.json();
+                    setAiAnalysis(result.candidates[0].content.parts[0].text);
+                } catch { setAiError("Erro na análise. Verifique a chave."); }
+                finally { setIsAnalyzing(false); }
+            };
+
+            if (!window.Recharts) {
+                return (
+                    <div className="flex h-screen items-center justify-center bg-slate-50">
+                        <div className="text-center">
+                            <Icon name="Loader2" className="animate-spin text-blue-600 mb-4 inline-block" size={40} />
+                            <p className="text-slate-600 font-bold">Carregando bibliotecas de visualização...</p>
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="max-w-7xl mx-auto p-4 md:p-8">
+                    <header className="mb-8 flex flex-col md:flex-row items-center justify-between gap-4">
+                        <div className="flex items-center gap-3">
+                            <div className="bg-slate-900 p-2 rounded-xl shadow-lg"><Icon name="Activity" className="text-white" /></div>
+                            <div>
+                                <h1 className="text-2xl font-black text-slate-800">Supply Expert <span className="text-blue-600">DepFMRJ</span></h1>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">v3.4 Production Ready</p>
+                            </div>
+                        </div>
+                        <label className="cursor-pointer px-6 py-2.5 rounded-xl font-bold bg-white border border-slate-200 hover:border-blue-500 hover:text-blue-600 transition-all shadow-sm text-sm">
+                            Importar Planilha
+                            <input type="file" className="hidden" accept=".xlsx,.xls,.csv" onChange={handleFileUpload} />
+                        </label>
+                    </header>
+
+                    {data.length > 0 ? (
+                        <div className="space-y-6">
+                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+                                    <p className="text-slate-400 text-[10px] font-black uppercase mb-1">Liberados (Corte)</p>
+                                    <p className="text-3xl font-black text-slate-800">{selection.e.toLocaleString()}</p>
+                                    <p className="text-[10px] text-blue-600 font-bold">Média: {selection.me}/dia</p>
+                                </div>
+                                <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+                                    <p className="text-emerald-500 text-[10px] font-black uppercase mb-1">Separados (Corte)</p>
+                                    <p className="text-3xl font-black text-slate-800">{selection.s.toLocaleString()}</p>
+                                    <p className="text-[10px] text-emerald-600 font-bold">Média: {selection.ms}/dia</p>
+                                </div>
+                                <div className={`p-6 rounded-3xl border-2 ${selection.bal >= 0 ? 'bg-emerald-50 border-emerald-100' : 'bg-orange-50 border-orange-100'}`}>
+                                    <p className="text-slate-500 text-[10px] font-black uppercase mb-1">Balanço</p>
+                                    <p className={`text-3xl font-black ${selection.bal >= 0 ? 'text-emerald-700' : 'text-orange-700'}`}>{selection.bal > 0 ? '+' : ''}{selection.bal.toLocaleString()}</p>
+                                </div>
+                                <button onClick={analyze} disabled={isAnalyzing} className="p-6 rounded-3xl bg-indigo-600 text-white font-black hover:bg-indigo-700 transition-all shadow-xl active:scale-95 flex flex-col items-start justify-center">
+                                    <span className="text-[10px] opacity-70 uppercase mb-1">Diagnóstico IA</span>
+                                    <div className="flex items-center justify-between w-full">
+                                        <span className="text-lg">Analisar ✨</span>
+                                        {isAnalyzing ? <Icon name="Loader2" className="animate-spin" /> : <Icon name="Sparkles" />}
+                                    </div>
+                                </button>
+                            </div>
+
+                            {(aiAnalysis || aiError) && (
+                                <div className="p-8 bg-white rounded-[40px] border-2 border-indigo-50 shadow-2xl animate-in zoom-in-95 duration-500">
+                                    <div className="flex items-center gap-3 mb-6">
+                                        <div className="p-3 bg-indigo-600 text-white rounded-2xl"><Icon name="Target" /></div>
+                                        <h3 className="text-xl font-black text-slate-800">Parecer Estratégico</h3>
+                                    </div>
+                                    <div className="text-slate-700 whitespace-pre-wrap leading-relaxed font-semibold bg-slate-50 p-6 rounded-2xl border border-slate-100">
+                                        {aiAnalysis || aiError}
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="bg-white p-8 rounded-[48px] border border-slate-200 shadow-sm">
+                                <h3 className="text-xl font-black text-slate-800 mb-8">Performance e Tendência</h3>
+                                <div className="h-[500px] w-full">
+                                    <ResponsiveContainer>
+                                        <ComposedChart data={chartData}>
+                                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                            <XAxis dataKey="date" tick={{fontSize: 10, fill: '#94a3b8'}} tickFormatter={v => v.split('-').reverse().slice(0,2).join('/')} height={60} />
+                                            <YAxis tick={{fontSize: 10, fill: '#94a3b8'}} axisLine={false} tickLine={false} />
+                                            <Tooltip contentStyle={{borderRadius: '20px', border:'none', boxShadow:'0 10px 30px rgba(0,0,0,0.1)'}} />
+                                            <Legend verticalAlign="top" align="right" />
+                                            <Bar dataKey="entradas" name="Entradas" fill="#cbd5e1" barSize={10} radius={[4,4,0,0]} opacity={0.5} />
+                                            <Line type="monotone" dataKey="ma7_e" name="MM7 Liberação" stroke="#3b82f6" strokeWidth={3} dot={false} />
+                                            <Line type="monotone" dataKey="ma7_s" name="MM7 Separação" stroke="#10b981" strokeWidth={3} dot={false} />
+                                            <Line type="monotone" dataKey="ma30_e" name="Histórico Lib." stroke="#1e40af" strokeWidth={1} strokeDasharray="5 5" dot={false} />
+                                            <Line type="monotone" dataKey="ma30_s" name="Histórico Sep." stroke="#065f46" strokeWidth={1} strokeDasharray="5 5" dot={false} />
+                                            <Brush dataKey="date" height={40} stroke="#e2e8f0" onChange={r => r && setVisibleRange({startIndex: r.startIndex, endIndex: r.endIndex})} />
+                                        </ComposedChart>
+                                    </ResponsiveContainer>
+                                </div>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="mt-32 flex flex-col items-center text-center opacity-40">
+                            <Icon name="FileSpreadsheet" size={80} className="text-indigo-600 mb-6" />
+                            <h2 className="text-4xl font-black">Aguardando Planilha</h2>
+                            <p className="font-bold uppercase tracking-widest text-xs mt-2">Arraste seu arquivo para iniciar a análise</p>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
 </html>
