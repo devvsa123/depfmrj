@@ -349,7 +349,7 @@ const App = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 p-4 md:p-8 font-sans text-slate-900 leading-tight">
+    <div className="min-h-screen bg-slate-50 px-6 py-6 md:px-10 md:py-8">
       <div className="w-full">
         {/* Header */}
         <header className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
