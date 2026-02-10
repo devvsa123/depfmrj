@@ -358,7 +358,7 @@ const App = () => {
               <Activity className="text-white" size={24} />
             </div>
             <div>
-              <h1 className="text-2xl font-black text-slate-800 tracking-tight">Supply Chain <span className="text-indigo-600">Expert DepFMRJ</span></h1>
+              <h1 className="text-2xl font-black text-slate-800 tracking-tight">Supply Chain <span className="text-indigo-600">DepFMRJ</span></h1>
               <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">Fluxo & Lead Time Analytics</p>
             </div>
           </div>
