@@ -23,7 +23,7 @@ const App = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [aiError, setAiError] = useState("");
 
-  const apiKey = ""; 
+  const apiKey = "AIzaSyB7-09YzTnSfZC-tYpdzPBbUbSDoWKDjX0"; 
 
   useEffect(() => {
     if (window.XLSX) {
@@ -256,8 +256,8 @@ const App = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 px-6 py-6 md:px-10 md:py-8 font-sans">
-      <div className="w-full">
+    <div className="min-h-screen bg-slate-50 font-sans text-slate-900 overflow-x-hidden">
+      <div className="w-full px-4 py-4 md:px-10 md:py-8 transition-all duration-300">
         <header className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="bg-indigo-600 p-2.5 rounded-2xl shadow-lg">
