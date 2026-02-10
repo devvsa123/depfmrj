@@ -24,7 +24,7 @@ const App = () => {
   const [aiError, setAiError] = useState("");
 
   // NOTA: Em produção, use variáveis de ambiente para chaves de API
-  const apiKey = ""; 
+  const apiKey = "AIzaSyB7-09YzTnSfZC-tYpdzPBbUbSDoWKDjX0"; 
 
   useEffect(() => {
     if (window.XLSX) {
