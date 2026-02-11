@@ -331,7 +331,8 @@ const App = () => {
                   Seleção de Período de Análise
                 </h3>
             
-                <div className="text-xs text-slate-500 font-semibold">
+                {/* Datas somente nas pontas */}
+                <div className="text-sm font-semibold text-slate-600">
                   {chartData[visibleRange.startIndex]?.date &&
                    chartData[visibleRange.endIndex]?.date && (
                     <>
@@ -343,26 +344,19 @@ const App = () => {
                 </div>
               </div>
             
-              <div className="h-[70px] w-full">
+              <div className="h-[60px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <ComposedChart data={chartData}>
-                    <XAxis 
-                      dataKey="date"
-                      tickFormatter={(val) =>
-                        val ? new Date(val).toLocaleDateString('pt-BR') : ''
-                      }
-                      tick={{ fontSize: 10 }}
-                    />
+                    
+                    {/* XAxis invisível */}
+                    <XAxis dataKey="date" hide />
             
                     <Brush
                       dataKey="date"
-                      height={40}
+                      height={35}
                       stroke="#cbd5e1"
-                      fill="#f8fafc"
-                      travellerWidth={10}
-                      tickFormatter={(val) =>
-                        val ? new Date(val).toLocaleDateString('pt-BR') : ''
-                      }
+                      fill="#f1f5f9"
+                      travellerWidth={12}
                       onChange={(r) =>
                         r &&
                         setVisibleRange({
@@ -387,7 +381,7 @@ const App = () => {
               </h3>
               <div className="h-[300px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <ComposedChart data={chartData} syncId="masterSync">
+                  <ComposedChart data={visibleData} syncId="masterSync">
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                     <XAxis dataKey="date" hide />
                     <YAxis tick={{fontSize: 10}} axisLine={false} />
@@ -414,7 +408,7 @@ const App = () => {
           
               <div className="h-[420px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <ComposedChart data={chartData} syncId="masterSync">
+                  <ComposedChart data={visibleData} syncId="masterSync">
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                     <XAxis 
                       dataKey="date" 
