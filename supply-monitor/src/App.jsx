@@ -389,7 +389,7 @@ const App = () => {
             {/* Volume de Fluxo */}
             <div className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-200">
               <h3 className="text-lg font-black text-slate-800 mb-6">
-                Volume de Fluxo Selecionado
+                Taxa de Liberação X Taxa de Expedição
               </h3>
               <div className="h-[300px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
@@ -411,7 +411,7 @@ const App = () => {
             <div className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-200">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-black text-slate-800">
-                  Tempo de Atendimento & Controle de Período
+                  Tempo de Atendimento
                 </h3>
                 <div className="bg-indigo-50 px-3 py-1 rounded-full text-[10px] text-indigo-600 font-black">
                   FILTRO: {selectionSummary.numDias} DIAS
@@ -486,7 +486,7 @@ const App = () => {
               <div className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-200">
                 <div className="flex items-center gap-2 mb-6">
                   <Package className="text-amber-500" size={20} />
-                  <h3 className="text-lg font-black text-slate-800">Eficiência de Itens (PI) no Período</h3>
+                  <h3 className="text-lg font-black text-slate-800">PI cancelados no período X PI fornecidos</h3>
                 </div>
                 <div className="flex flex-col md:flex-row items-center gap-8 h-[300px]">
                   <div className="w-full md:w-1/2 h-full">
@@ -511,7 +511,7 @@ const App = () => {
                       <p className="text-xl font-black text-slate-800">{dynamicAnalysis.piStats.totalUnique}</p>
                     </div>
                     <div className="bg-red-50 p-4 rounded-2xl border border-red-100">
-                      <p className="text-[10px] font-black text-red-400 uppercase">Taxa de Perda</p>
+                      <p className="text-[10px] font-black text-red-400 uppercase">Taxa de cancelamento (Análise por PI)</p>
                       <p className="text-xl font-black text-red-600">
                         {dynamicAnalysis.piStats.totalUnique > 0 ? ((dynamicAnalysis.piStats.cancelled / dynamicAnalysis.piStats.totalUnique) * 100).toFixed(1) : 0}%
                       </p>
