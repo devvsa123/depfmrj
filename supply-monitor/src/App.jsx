@@ -179,6 +179,18 @@ const App = () => {
     });
   }, [data]);
 
+  // =========================
+  // DADOS VISÍVEIS (RECORTE DO BRUSH)
+  // =========================
+  const visibleData = useMemo(() => {
+    if (!chartData.length) return [];
+
+    return chartData.slice(
+      visibleRange.startIndex,
+      visibleRange.endIndex + 1
+    );
+  }, [chartData, visibleRange]);
+
   // --- ANÁLISE DINÂMICA (CANCELAMENTOS E PI) ---
   const dynamicAnalysis = useMemo(() => {
     if (data.length === 0 || chartData.length === 0) return { monthly: [], piStats: { delivered: 0, cancelled: 0, totalUnique: 0 } };
