@@ -323,6 +323,60 @@ const App = () => {
               </div>
             )}
 
+            {/* Seletor Global de Período */}
+            <div className="bg-white p-6 rounded-[30px] shadow-sm border border-slate-200 mb-6">
+            
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider">
+                  Seleção de Período de Análise
+                </h3>
+            
+                <div className="text-xs text-slate-500 font-semibold">
+                  {chartData[visibleRange.startIndex]?.date &&
+                   chartData[visibleRange.endIndex]?.date && (
+                    <>
+                      {new Date(chartData[visibleRange.startIndex].date).toLocaleDateString('pt-BR')}
+                      {"  —  "}
+                      {new Date(chartData[visibleRange.endIndex].date).toLocaleDateString('pt-BR')}
+                    </>
+                  )}
+                </div>
+              </div>
+            
+              <div className="h-[70px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <ComposedChart data={chartData}>
+                    <XAxis 
+                      dataKey="date"
+                      tickFormatter={(val) =>
+                        val ? new Date(val).toLocaleDateString('pt-BR') : ''
+                      }
+                      tick={{ fontSize: 10 }}
+                    />
+            
+                    <Brush
+                      dataKey="date"
+                      height={40}
+                      stroke="#cbd5e1"
+                      fill="#f8fafc"
+                      travellerWidth={10}
+                      tickFormatter={(val) =>
+                        val ? new Date(val).toLocaleDateString('pt-BR') : ''
+                      }
+                      onChange={(r) =>
+                        r &&
+                        setVisibleRange({
+                          startIndex: r.startIndex,
+                          endIndex: r.endIndex,
+                        })
+                      }
+                    />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+            
+            </div>
+
             {/* Fluxo + Lead Time lado a lado */}
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
 
@@ -393,15 +447,7 @@ const App = () => {
           
                     <Line type="monotone" dataKey="leadTimeMa30" name="MM30" stroke="#94a3b8" strokeWidth={2} strokeDasharray="5 5" dot={false} />
                     <Line type="monotone" dataKey="leadTimeMa7" name="MM7 Atendimento" stroke="#7c3aed" strokeWidth={3} dot={false} />
-          
-                    <Brush 
-                      dataKey="date" 
-                      height={40} 
-                      stroke="#cbd5e1" 
-                      fill="#f8fafc"
-                      tickFormatter={(val) => val ? new Date(val).toLocaleDateString('pt-BR', { month: 'short' }) : ''}
-                      onChange={(r) => r && setVisibleRange({ startIndex: r.startIndex, endIndex: r.endIndex })}
-                    />
+
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>
