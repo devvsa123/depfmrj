@@ -323,9 +323,14 @@ const App = () => {
               </div>
             )}
 
+            {/* Fluxo + Lead Time lado a lado */}
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+
             {/* Volume de Fluxo */}
             <div className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-200">
-              <h3 className="text-lg font-black text-slate-800 mb-6">Volume de Fluxo Selecionado</h3>
+              <h3 className="text-lg font-black text-slate-800 mb-6">
+                Volume de Fluxo Selecionado
+              </h3>
               <div className="h-[300px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <ComposedChart data={chartData} syncId="masterSync">
@@ -341,15 +346,18 @@ const App = () => {
                 </ResponsiveContainer>
               </div>
             </div>
-
+          
             {/* Lead Time e Brush */}
             <div className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-200">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-black text-slate-800">Tempo de Atendimento & Controle de Período</h3>
+                <h3 className="text-lg font-black text-slate-800">
+                  Tempo de Atendimento & Controle de Período
+                </h3>
                 <div className="bg-indigo-50 px-3 py-1 rounded-full text-[10px] text-indigo-600 font-black">
                   FILTRO: {selectionSummary.numDias} DIAS
                 </div>
               </div>
+          
               <div className="h-[420px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <ComposedChart data={chartData} syncId="masterSync">
@@ -363,7 +371,7 @@ const App = () => {
                     <YAxis unit="d" tick={{fontSize: 10}} axisLine={false} />
                     <Tooltip labelFormatter={v => `Data: ${new Date(v).toLocaleDateString('pt-BR')}`} />
                     <Legend verticalAlign="top" align="right" />
-                    
+          
                     <Area 
                       type="monotone" 
                       dataKey="channelLower" 
@@ -382,10 +390,10 @@ const App = () => {
                       fill="#d8b4fe" 
                       opacity={0.3} 
                     />
-                    
+          
                     <Line type="monotone" dataKey="leadTimeMa30" name="MM30" stroke="#94a3b8" strokeWidth={2} strokeDasharray="5 5" dot={false} />
                     <Line type="monotone" dataKey="leadTimeMa7" name="MM7 Atendimento" stroke="#7c3aed" strokeWidth={3} dot={false} />
-                    
+          
                     <Brush 
                       dataKey="date" 
                       height={40} 
@@ -398,6 +406,8 @@ const App = () => {
                 </ResponsiveContainer>
               </div>
             </div>
+          
+          </div>
 
             {/* Cancelamentos e PIs */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
