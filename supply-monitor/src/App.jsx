@@ -328,7 +328,14 @@ const App = () => {
       );
   
       const result = await response.json();
-      setAiAnalysis(result.candidates?.[0]?.content?.parts?.[0]?.text);
+      const rawText = result.candidates?.[0]?.content?.parts?.[0]?.text || "";
+
+      const cleanedText = rawText
+        .replace(/[#*`>-]/g, "")      // remove markdown symbols
+        .replace(/---+/g, "")         // remove separadores
+        .replace(/\n{3,}/g, "\n\n");  // normaliza quebras
+      
+      setAiAnalysis(cleanedText.trim());
     } catch (err) {
       setAiError("Erro na análise.");
     } finally {
