@@ -254,17 +254,86 @@ const App = () => {
 
   const analyzeWithAI = async () => {
     if (!chartData.length || isAnalyzing) return;
+  
     setIsAnalyzing(true);
-    const userQuery = `DADOS: Entradas ${selectionSummary.entradas}, Saídas ${selectionSummary.separacoes}, LT ${selectionSummary.avgLeadTimePeriodo}d.`;
+    setAiError("");
+    setAiAnalysis("");
+  
+    // ====== MÉTRICAS HISTÓRICAS ======
+    const totalEntradasHist = chartData.reduce((a, b) => a + (b.entradas || 0), 0);
+    const totalSaidasHist = chartData.reduce((a, b) => a + (b.separacoes || 0), 0);
+  
+    const mediaHistoricaSaidas =
+      totalSaidasHist / chartData.length;
+  
+    const picoHistorico =
+      Math.max(...chartData.map(d => d.separacoes || 0));
+  
+    const mediaLeadHistorico =
+      chartData.reduce((a, b) => a + (b.leadTimeDaily || 0), 0) /
+      chartData.length;
+  
+    // ====== MÉTRICAS DO PERÍODO SELECIONADO ======
+    const periodoSaidas = selectionSummary.separacoes;
+    const periodoEntradas = selectionSummary.entradas;
+    const periodoMediaDiaria =
+      periodoSaidas / selectionSummary.numDias;
+  
+    const periodoLead = selectionSummary.avgLeadTimePeriodo;
+  
+    const userQuery = `
+  Você é um consultor sênior de Supply Chain especializado em análise operacional.
+  
+  Analise os dados abaixo considerando TODO o histórico disponível e o período selecionado.
+  
+  DADOS HISTÓRICOS:
+  - Total histórico de entradas: ${totalEntradasHist}
+  - Total histórico de saídas: ${totalSaidasHist}
+  - Média histórica diária de expedição: ${mediaHistoricaSaidas.toFixed(2)}
+  - Pico histórico diário de expedição: ${picoHistorico}
+  - Lead Time médio histórico: ${mediaLeadHistorico.toFixed(2)} dias
+  
+  DADOS DO PERÍODO SELECIONADO:
+  - Entradas no período: ${periodoEntradas}
+  - Saídas no período: ${periodoSaidas}
+  - Média diária de expedição no período: ${periodoMediaDiaria.toFixed(2)}
+  - Lead Time médio no período: ${periodoLead} dias
+  
+  QUERO QUE VOCÊ:
+  1. Compare o desempenho atual com a média histórica.
+  2. Informe se a taxa de expedição está acima, dentro ou abaixo da média.
+  3. Avalie se estamos próximos de um pico histórico.
+  4. Identifique possível sazonalidade.
+  5. Avalie tendência (crescimento, estabilidade ou queda).
+  6. Diga se existe risco de formação de backlog.
+  7. Forneça uma previsão qualitativa de demanda com base na sazonalidade observada.
+  8. Escreva em formato executivo, direto, sem tabelas, sem fórmulas matemáticas.
+  9. Finalize com um parecer estratégico claro.
+  
+  Não use tabelas.
+  Não repita os números em formato de cálculo.
+  Seja analítico e estratégico.
+  `;
+  
     try {
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ parts: [{ text: userQuery }] }] })
-      });
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: userQuery }] }],
+          }),
+        }
+      );
+  
       const result = await response.json();
       setAiAnalysis(result.candidates?.[0]?.content?.parts?.[0]?.text);
-    } catch (err) { setAiError("Erro na análise."); } finally { setIsAnalyzing(false); }
+    } catch (err) {
+      setAiError("Erro na análise.");
+    } finally {
+      setIsAnalyzing(false);
+    }
   };
 
   return (
