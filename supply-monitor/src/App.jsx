@@ -30,7 +30,7 @@ const App = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [aiError, setAiError] = useState("");
 
-  const apiKey = ""; 
+  const apiKey = "AIzaSyB7-09YzTnSfZC-tYpdzPBbUbSDoWKDjX0"; 
 
   useEffect(() => {
     if (window.XLSX) {
