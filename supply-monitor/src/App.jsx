@@ -637,31 +637,39 @@ const App = () => {
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
-                    data={[
-                      { name: 'PIs Entregues', value: dynamicAnalysis.piStats.delivered, type: 'delivered' },
-                      { name: 'PIs Cancelados', value: dynamicAnalysis.piStats.cancelled, type: 'cancelled' }
-                    ]}
+                    data={useMemo(() => [
+                      { name: 'PIs Entregues', value: dynamicAnalysis.piStats.delivered, type: 'delivered', fill: '#10b981' },
+                      { name: 'PIs Cancelados', value: dynamicAnalysis.piStats.cancelled, type: 'cancelled', fill: '#f43f5e' }
+                    ], [dynamicAnalysis.piStats])}
                     innerRadius={60} 
                     outerRadius={80} 
                     paddingAngle={5} 
                     dataKey="value"
-                    // REMOVI O ONCLICK DAQUI (Inseguro em produção)
+                    isAnimationActive={false} // Desativa animação para garantir o clique
+                    cursor="pointer"
+                    onClick={(data) => {
+                      // Captura robusta do tipo, verificando payload ou propriedade direta
+                      const type = data?.payload?.type || data?.type;
+                      if (type) setSelectedPiSegment(type);
+                    }}
                   >
-                    {/* Mapeamento manual das células para garantir o clique direto */}
-                    {[
-                      { type: 'delivered', fill: '#10b981' }, // Verde
-                      { type: 'cancelled', fill: '#f43f5e' }  // Vermelho
-                    ].map((entry, index) => (
-                      <Cell 
-                        key={`cell-${index}`} 
-                        fill={entry.fill} 
-                        className="cursor-pointer hover:opacity-80 transition-opacity"
-                        // ADICIONEI O ONCLICK AQUI (Seguro)
-                        onClick={() => setSelectedPiSegment(entry.type)}
-                      />
-                    ))}
+                    {/* Mapeamento apenas para as cores, sem onClick na Cell */}
+                    <Cell fill="#10b981" />
+                    <Cell fill="#f43f5e" />
                   </Pie>
                   <Tooltip />
+                  <Legend 
+                    layout="vertical" 
+                    verticalAlign="middle" 
+                    align="right" 
+                    wrapperStyle={{fontSize: '11px', fontWeight: '600'}} 
+                    // Torna a legenda clicável também como backup
+                    onClick={(data) => {
+                       const type = data?.payload?.type || data?.type;
+                       if (type) setSelectedPiSegment(type);
+                    }}
+                    cursor="pointer"
+                  />
                 </PieChart>
               </ResponsiveContainer>
             </div>
