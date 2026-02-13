@@ -22,6 +22,8 @@ const App = () => {
   const [aiAnalysis, setAiAnalysis] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [aiError, setAiError] = useState("");
+  const [viewMode, setViewMode] = useState("dashboard");
+  const [selectedStatus, setSelectedStatus] = useState(null);
 
   const apiKey = "AIzaSyB7-09YzTnSfZC-tYpdzPBbUbSDoWKDjX0"; 
 
@@ -246,6 +248,69 @@ const App = () => {
     return { entradas, separacoes, balanco: separacoes - entradas, numDias: viewSlice.length, mediaEntradasPeriodo: (entradas / viewSlice.length).toFixed(2), mediaSeparacoesPeriodo: (separacoes / viewSlice.length).toFixed(2), avgLeadTimePeriodo: avgLead, avgStdDev };
   }, [chartData, visibleRange]);
 
+  // ---------------- BACKLOG CRÍTICO ----------------
+
+  const backlogAnalysis = useMemo(() => {
+    if (!data.length) return [];
+  
+    const today = new Date();
+  
+    const activeOrders = data.filter(item => {
+      const status = String(item.STATUS || "").toUpperCase().trim();
+      return status !== "EXPEDIDO" && status !== "CANCELADO";
+    });
+  
+    const enriched = activeOrders.map(item => {
+      const entryDateStr = safeGetISODate(item.DATA_ENTRADA);
+      if (!entryDateStr) return null;
+  
+      const entryDate = new Date(entryDateStr);
+      const aging = Math.ceil((today - entryDate) / (1000 * 60 * 60 * 24));
+  
+      return { ...item, aging };
+    }).filter(Boolean);
+  
+    const grouped = {};
+  
+    enriched.forEach(item => {
+      const status = String(item.STATUS).toUpperCase().trim();
+  
+      if (!grouped[status]) {
+        grouped[status] = {
+          status,
+          quantidade: 0,
+          totalDias: 0,
+          maxDias: 0
+        };
+      }
+  
+      grouped[status].quantidade += 1;
+      grouped[status].totalDias += item.aging;
+      grouped[status].maxDias = Math.max(grouped[status].maxDias, item.aging);
+    });
+  
+    const arr = Object.values(grouped).map(g => ({
+      ...g,
+      mediaDias: parseFloat((g.totalDias / g.quantidade).toFixed(1))
+    }));
+  
+    arr.sort((a, b) => b.totalDias - a.totalDias);
+  
+    const totalImpacto = arr.reduce((acc, c) => acc + c.totalDias, 0);
+  
+    let acumulado = 0;
+    return arr.map(item => {
+      acumulado += item.totalDias;
+      return {
+        ...item,
+        percentual: parseFloat(((item.totalDias / totalImpacto) * 100).toFixed(1)),
+        acumulado: parseFloat(((acumulado / totalImpacto) * 100).toFixed(1))
+      };
+    });
+  
+  }, [data]);
+
+
   useEffect(() => {
     if (chartData.length > 0) {
       setVisibleRange({ startIndex: 0, endIndex: chartData.length - 1 });
@@ -360,10 +425,35 @@ const App = () => {
             <Upload size={18} /> {fileName || "Carregar Planilha"}
             <input type="file" className="hidden" accept=".xlsx, .xls, .csv" onChange={handleFileUpload} disabled={!libLoaded} />
           </label>
+          <div className="flex gap-2">
+          <button
+            onClick={() => setViewMode("dashboard")}
+            className={`px-4 py-2 rounded-xl font-bold text-sm transition-all ${
+              viewMode === "dashboard"
+                ? "bg-indigo-600 text-white"
+                : "bg-white border border-slate-200"
+            }`}
+          >
+            Dashboard Histórico
+          </button>
+        
+          <button
+            onClick={() => setViewMode("backlog")}
+            className={`px-4 py-2 rounded-xl font-bold text-sm transition-all ${
+              viewMode === "backlog"
+                ? "bg-indigo-600 text-white"
+                : "bg-white border border-slate-200"
+            }`}
+          >
+            Backlog Crítico
+          </button>
+        </div>
+
         </header>
 
         {data.length > 0 ? (
-          <div className="space-y-6">
+          viewMode === "dashboard" ? (
+            <div className="space-y-6">
             {/* KPIs */}
             <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
               <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
@@ -598,6 +688,95 @@ const App = () => {
             </div>
           </div>
         ) : (
+          <div className="space-y-8">
+
+          <div className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-200">
+            <h3 className="text-xl font-black text-slate-800 mb-6">
+              Pareto de Backlog por Status
+            </h3>
+    
+            <div className="h-[400px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={backlogAnalysis}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="status" />
+                  <YAxis yAxisId="left" />
+                  <YAxis yAxisId="right" orientation="right" domain={[0,100]} />
+                  <Tooltip />
+                  <Legend />
+    
+                  <Bar
+                    yAxisId="left"
+                    dataKey="totalDias"
+                    name="Impacto (Dias Acumulados)"
+                    fill="#6366f1"
+                    onClick={(data) => setSelectedStatus(data.status)}
+                  />
+    
+                  <Line
+                    yAxisId="right"
+                    type="monotone"
+                    dataKey="acumulado"
+                    name="% Acumulado"
+                    stroke="#ef4444"
+                    strokeWidth={3}
+                  />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+    
+          {selectedStatus && (
+            <div className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-200">
+              <h4 className="text-lg font-black mb-4">
+                Pedidos no Status: {selectedStatus}
+              </h4>
+    
+              <div className="max-h-[400px] overflow-auto text-sm">
+                <table className="w-full text-left">
+                  <thead className="bg-slate-100">
+                    <tr>
+                      <th className="p-2">Pedido</th>
+                      <th className="p-2">Data Entrada</th>
+                      <th className="p-2">Dias em Aberto</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data
+                      .filter(item =>
+                        String(item.STATUS).toUpperCase().trim() === selectedStatus
+                      )
+                      .map((item, idx) => {
+                        const entry = safeGetISODate(item.DATA_ENTRADA);
+                        const aging = entry
+                          ? Math.ceil(
+                              (new Date() - new Date(entry)) /
+                                (1000 * 60 * 60 * 24)
+                            )
+                          : "-";
+    
+                        return (
+                          <tr key={idx} className="border-b">
+                            <td className="p-2">{item.PEDIDO || item.PI || "-"}</td>
+                            <td className="p-2">
+                              {entry
+                                ? new Date(entry).toLocaleDateString("pt-BR")
+                                : "-"}
+                            </td>
+                            <td className="p-2 font-bold">{aging}</td>
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+    
+        </div>
+    
+      )
+          
           <div className="mt-32 flex flex-col items-center justify-center text-center">
             <div className="w-40 h-40 bg-white rounded-[50px] shadow-2xl flex items-center justify-center mb-8 border border-slate-100">
               <FileSpreadsheet size={60} className="text-indigo-500 opacity-20" />
