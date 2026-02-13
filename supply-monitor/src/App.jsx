@@ -29,7 +29,7 @@ const [aiAnalysis, setAiAnalysis] = useState("");
 const [isAnalyzing, setIsAnalyzing] = useState(false);
 const [aiError, setAiError] = useState("");
 
-const apiKey = "";
+const apiKey = "AIzaSyB7-09YzTnSfZC-tYpdzPBbUbSDoWKDjX0";
 
 useEffect(() => {
 if (window.XLSX) {
@@ -277,16 +277,23 @@ return { ...item, daysOpen, entryDateIso };
 
 // Buckets para Histograma (Aging)
 const buckets = [
-{ name: '0-3 Dias', min: 0, max: 3, count: 0, fill: '#10b981' }, // Green
-{ name: '4-7 Dias', min: 4, max: 7, count: 0, fill: '#3b82f6' }, // Blue
-{ name: '8-14 Dias', min: 8, max: 14, count: 0, fill: '#f59e0b' }, // Amber
-{ name: '15-30 Dias', min: 15, max: 30, count: 0, fill: '#f97316' }, // Orange
-{ name: '30+ Dias', min: 31, max: 99999, count: 0, fill: '#ef4444' } // Red
+{ name: '0-3 Dias', min: 0, max: 3, total: 0 }, // Removed fixed fill color
+{ name: '4-7 Dias', min: 4, max: 7, total: 0 },
+{ name: '8-14 Dias', min: 8, max: 14, total: 0 },
+{ name: '15-30 Dias', min: 15, max: 30, total: 0 },
+{ name: '30+ Dias', min: 31, max: 99999, total: 0 }
 ];
+
+const uniqueStatuses = new Set();
 
 pendingWithAge.forEach(order => {
 const bucket = buckets.find(b => order.daysOpen >= b.min && order.daysOpen <= b.max);
-if (bucket) bucket.count++;
+if (bucket) {
+    bucket.total++;
+    const status = String(order.STATUS || "N/A").toUpperCase().trim();
+    bucket[status] = (bucket[status] || 0) + 1;
+    uniqueStatuses.add(status);
+}
 });
 
 // Stats Gerais
@@ -311,7 +318,8 @@ totalPending,
 avgAge,
 oldestOrder,
 statusChartData,
-topOffenders: pendingWithAge.slice(0, 10)
+topOffenders: pendingWithAge.slice(0, 10),
+uniqueStatuses: Array.from(uniqueStatuses) // Convert Set to Array for mapping
 };
 }, [data]);
 
@@ -837,6 +845,19 @@ return (
 );
 }
 
+// Cores para os status (Palette)
+const STATUS_COLORS = [
+    '#3b82f6', // blue-500
+    '#ef4444', // red-500
+    '#f59e0b', // amber-500
+    '#8b5cf6', // violet-500
+    '#ec4899', // pink-500
+    '#06b6d4', // cyan-500
+    '#10b981', // emerald-500
+    '#6366f1', // indigo-500
+    '#f97316'  // orange-500
+];
+
 return (
 <div className="space-y-8 animate-in fade-in zoom-in duration-300">
 {/* Renderiza o Modal se houver seleção */}
@@ -886,34 +907,44 @@ Data: {new Date(backlogAnalysis.oldestOrder.entryDateIso).toLocaleDateString('pt
 
 {/* Gráficos de Aging e Status */}
 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-{/* Histograma de Aging */}
+{/* Histograma de Aging Stacked */}
 <div className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-200">
 <h3 className="text-lg font-black text-slate-800 mb-6 flex items-center gap-2">
-<Activity className="text-indigo-500" /> Saúde do Fluxo (Aging de Pedidos)
+<Activity className="text-indigo-500" /> Saúde do Fluxo (Aging por Status)
 </h3>
-<p className="text-xs text-slate-400 mb-4 font-medium italic">Clique nas barras para ver os detalhes</p>
+<p className="text-xs text-slate-400 mb-4 font-medium italic">As barras mostram a composição de status por faixa de atraso.</p>
 <div className="h-[350px] w-full">
 <ResponsiveContainer width="100%" height="100%">
-<BarChart data={backlogAnalysis.buckets} layout="vertical" onClick={(data) => {
-if (data && data.activePayload && data.activePayload.length > 0) {
-setSelectedBucket(data.activePayload[0].payload);
-}
-}}>
+<BarChart 
+    data={backlogAnalysis.buckets} 
+    layout="vertical" 
+    onClick={(data) => {
+        if (data && data.activePayload && data.activePayload.length > 0) {
+            setSelectedBucket(data.activePayload[0].payload);
+        }
+    }}
+>
 <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
 <XAxis type="number" hide />
 <YAxis dataKey="name" type="category" width={100} tick={{fontSize: 11, fontWeight: 700, fill: '#64748b'}} axisLine={false} />
 <Tooltip cursor={{fill: '#f1f5f9', opacity: 0.5}} contentStyle={{borderRadius: 12, border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}} />
-<Bar dataKey="count" name="Pedidos" radius={[0, 4, 4, 0]} barSize={32} className="cursor-pointer">
-{backlogAnalysis.buckets.map((entry, index) => (
-<Cell key={`cell-${index}`} fill={entry.fill} className="hover:opacity-80 transition-opacity cursor-pointer" />
+<Legend wrapperStyle={{fontSize: '10px', paddingTop: '10px'}} />
+{backlogAnalysis.uniqueStatuses.map((status, index) => (
+    <Bar 
+        key={status} 
+        dataKey={status} 
+        stackId="a" 
+        fill={STATUS_COLORS[index % STATUS_COLORS.length]} 
+        className="cursor-pointer hover:opacity-90 transition-opacity"
+        barSize={32}
+    />
 ))}
-</Bar>
 </BarChart>
 </ResponsiveContainer>
 </div>
 <div className="mt-4 flex justify-between text-xs text-slate-400 font-medium px-4">
-<span>Recentes (Saudável)</span>
-<span>Críticos (Risco)</span>
+<span>Recentes</span>
+<span>Críticos (Antigos)</span>
 </div>
 </div>
 
@@ -933,7 +964,7 @@ paddingAngle={2}
 dataKey="value"
 >
 {backlogAnalysis.statusChartData.map((entry, index) => (
-<Cell key={`cell-${index}`} fill={['#6366f1', '#8b5cf6', '#d946ef', '#f43f5e', '#ec4899'][index % 5]} />
+<Cell key={`cell-${index}`} fill={STATUS_COLORS[index % STATUS_COLORS.length]} />
 ))}
 </Pie>
 <Tooltip />
