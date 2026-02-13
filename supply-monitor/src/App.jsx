@@ -777,19 +777,20 @@ const App = () => {
     
       )
           
-          <div className="mt-32 flex flex-col items-center justify-center text-center">
-            <div className="w-40 h-40 bg-white rounded-[50px] shadow-2xl flex items-center justify-center mb-8 border border-slate-100">
-              <FileSpreadsheet size={60} className="text-indigo-500 opacity-20" />
-            </div>
-            <h2 className="text-2xl font-black text-slate-800 tracking-tight">Supply Monitor 3.6</h2>
-            <p className="text-slate-400 text-sm max-w-sm mt-2 font-medium">
-              Importe o arquivo do WMS para visualizar o painel analítico histórico.
-            </p>
-          </div>
-        )}
+          ) : (
+
+      <div className="mt-32 flex flex-col items-center justify-center text-center">
+        <div className="w-40 h-40 bg-white rounded-[50px] shadow-2xl flex items-center justify-center mb-8 border border-slate-100">
+          <FileSpreadsheet size={60} className="text-indigo-500 opacity-20" />
+        </div>
+        <h2 className="text-2xl font-black text-slate-800 tracking-tight">
+          Supply Monitor 3.6
+        </h2>
+        <p className="text-slate-400 text-sm max-w-sm mt-2 font-medium">
+          Importe o arquivo do WMS para visualizar o painel analítico histórico.
+        </p>
       </div>
-    </div>
-  );
-};
+
+    )}
 
 export default App;
