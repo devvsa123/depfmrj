@@ -917,12 +917,7 @@ Data: {new Date(backlogAnalysis.oldestOrder.entryDateIso).toLocaleDateString('pt
 <ResponsiveContainer width="100%" height="100%">
 <BarChart 
     data={backlogAnalysis.buckets} 
-    layout="vertical" 
-    onClick={(data) => {
-        if (data && data.activePayload && data.activePayload.length > 0) {
-            setSelectedBucket(data.activePayload[0].payload);
-        }
-    }}
+    layout="vertical"
 >
 <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
 <XAxis type="number" hide />
@@ -937,6 +932,11 @@ Data: {new Date(backlogAnalysis.oldestOrder.entryDateIso).toLocaleDateString('pt
         fill={STATUS_COLORS[index % STATUS_COLORS.length]} 
         className="cursor-pointer hover:opacity-90 transition-opacity"
         barSize={32}
+        onClick={(data) => {
+             // Robust handling for data payload: check both direct props or payload prop
+             const bucketData = data.payload || data;
+             if (bucketData) setSelectedBucket(bucketData);
+        }}
     />
 ))}
 </BarChart>
