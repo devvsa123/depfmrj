@@ -430,6 +430,12 @@ const App = () => {
     }
   };
 
+  // --- PREPARAÇÃO DOS DADOS DO GRÁFICO DE PIZZA (Hook no nível superior) ---
+  const pieChartData = useMemo(() => [
+    { name: 'PIs Entregues', value: dynamicAnalysis.piStats.delivered, type: 'delivered', fill: '#10b981' },
+    { name: 'PIs Cancelados', value: dynamicAnalysis.piStats.cancelled, type: 'cancelled', fill: '#f43f5e' }
+  ], [dynamicAnalysis.piStats]);
+  
   const renderDashboard = () => (
     <div className="space-y-6 animate-in fade-in zoom-in duration-300">
       {/* KPIs */}
@@ -632,28 +638,28 @@ const App = () => {
             <Package className="text-amber-500" size={20} />
             <h3 className="text-lg font-black text-slate-800">PI cancelados no período X PI fornecidos</h3>
           </div>
+          <div className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-200">
+            <div className="flex items-center gap-2 mb-6">
+              <Package className="text-amber-500" size={20} />
+              <h3 className="text-lg font-black text-slate-800">PI cancelados no período X PI fornecidos</h3>
+          </div>
           <div className="flex flex-col md:flex-row items-center gap-8 h-[300px]">
             <div className="w-full md:w-1/2 h-full">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
-                    data={useMemo(() => [
-                      { name: 'PIs Entregues', value: dynamicAnalysis.piStats.delivered, type: 'delivered', fill: '#10b981' },
-                      { name: 'PIs Cancelados', value: dynamicAnalysis.piStats.cancelled, type: 'cancelled', fill: '#f43f5e' }
-                    ], [dynamicAnalysis.piStats])}
+                    data={pieChartData} // <--- AQUI ESTAVA O ERRO. Agora usa a variável segura.
                     innerRadius={60} 
                     outerRadius={80} 
                     paddingAngle={5} 
                     dataKey="value"
-                    isAnimationActive={false} // Desativa animação para garantir o clique
+                    isAnimationActive={false}
                     cursor="pointer"
                     onClick={(data) => {
-                      // Captura robusta do tipo, verificando payload ou propriedade direta
                       const type = data?.payload?.type || data?.type;
                       if (type) setSelectedPiSegment(type);
                     }}
                   >
-                    {/* Mapeamento apenas para as cores, sem onClick na Cell */}
                     <Cell fill="#10b981" />
                     <Cell fill="#f43f5e" />
                   </Pie>
@@ -663,10 +669,9 @@ const App = () => {
                     verticalAlign="middle" 
                     align="right" 
                     wrapperStyle={{fontSize: '11px', fontWeight: '600'}} 
-                    // Torna a legenda clicável também como backup
                     onClick={(data) => {
-                       const type = data?.payload?.type || data?.type;
-                       if (type) setSelectedPiSegment(type);
+                        const type = data?.payload?.type || data?.type;
+                        if (type) setSelectedPiSegment(type);
                     }}
                     cursor="pointer"
                   />
@@ -687,9 +692,6 @@ const App = () => {
             </div>
           </div>
         </div>
-      </div>
-    </div>
-  );
 
   const renderBucketDetailsModal = () => {
     if (!selectedBucket) return null;
