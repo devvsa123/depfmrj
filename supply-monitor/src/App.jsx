@@ -22,8 +22,6 @@ const App = () => {
   const [aiAnalysis, setAiAnalysis] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [aiError, setAiError] = useState("");
-  const [viewMode, setViewMode] = useState("dashboard");
-  const [selectedStatus, setSelectedStatus] = useState(null);
 
   const apiKey = "AIzaSyB7-09YzTnSfZC-tYpdzPBbUbSDoWKDjX0"; 
 
@@ -248,69 +246,6 @@ const App = () => {
     return { entradas, separacoes, balanco: separacoes - entradas, numDias: viewSlice.length, mediaEntradasPeriodo: (entradas / viewSlice.length).toFixed(2), mediaSeparacoesPeriodo: (separacoes / viewSlice.length).toFixed(2), avgLeadTimePeriodo: avgLead, avgStdDev };
   }, [chartData, visibleRange]);
 
-  // ---------------- BACKLOG CRÍTICO ----------------
-
-  const backlogAnalysis = useMemo(() => {
-    if (!data.length) return [];
-  
-    const today = new Date();
-  
-    const activeOrders = data.filter(item => {
-      const status = String(item.STATUS || "").toUpperCase().trim();
-      return status !== "EXPEDIDO" && status !== "CANCELADO";
-    });
-  
-    const enriched = activeOrders.map(item => {
-      const entryDateStr = safeGetISODate(item.DATA_ENTRADA);
-      if (!entryDateStr) return null;
-  
-      const entryDate = new Date(entryDateStr);
-      const aging = Math.ceil((today - entryDate) / (1000 * 60 * 60 * 24));
-  
-      return { ...item, aging };
-    }).filter(Boolean);
-  
-    const grouped = {};
-  
-    enriched.forEach(item => {
-      const status = String(item.STATUS).toUpperCase().trim();
-  
-      if (!grouped[status]) {
-        grouped[status] = {
-          status,
-          quantidade: 0,
-          totalDias: 0,
-          maxDias: 0
-        };
-      }
-  
-      grouped[status].quantidade += 1;
-      grouped[status].totalDias += item.aging;
-      grouped[status].maxDias = Math.max(grouped[status].maxDias, item.aging);
-    });
-  
-    const arr = Object.values(grouped).map(g => ({
-      ...g,
-      mediaDias: parseFloat((g.totalDias / g.quantidade).toFixed(1))
-    }));
-  
-    arr.sort((a, b) => b.totalDias - a.totalDias);
-  
-    const totalImpacto = arr.reduce((acc, c) => acc + c.totalDias, 0);
-  
-    let acumulado = 0;
-    return arr.map(item => {
-      acumulado += item.totalDias;
-      return {
-        ...item,
-        percentual: parseFloat(((item.totalDias / totalImpacto) * 100).toFixed(1)),
-        acumulado: parseFloat(((acumulado / totalImpacto) * 100).toFixed(1))
-      };
-    });
-  
-  }, [data]);
-
-
   useEffect(() => {
     if (chartData.length > 0) {
       setVisibleRange({ startIndex: 0, endIndex: chartData.length - 1 });
@@ -408,184 +343,274 @@ const App = () => {
     }
   };
 
-    // ============================
-    // RENDERIZAÇÕES SEPARADAS
-    // ============================
-  
-    const renderEmptyState = () => (
-      <div className="mt-32 flex flex-col items-center justify-center text-center">
-        <div className="w-40 h-40 bg-white rounded-[50px] shadow-2xl flex items-center justify-center mb-8 border border-slate-100">
-          <FileSpreadsheet size={60} className="text-indigo-500 opacity-20" />
-        </div>
-        <h2 className="text-2xl font-black text-slate-800 tracking-tight">
-          Supply Monitor 3.6
-        </h2>
-        <p className="text-slate-400 text-sm max-w-sm mt-2 font-medium">
-          Importe o arquivo do WMS para visualizar o painel analítico histórico.
-        </p>
-      </div>
-    );
-  
-    const renderBacklog = () => (
-      <div className="space-y-8">
-        <div className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-200">
-          <h3 className="text-xl font-black text-slate-800 mb-6">
-            Pareto de Backlog por Status
-          </h3>
-  
-          <div className="h-[400px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={backlogAnalysis}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="status" />
-                <YAxis yAxisId="left" />
-                <YAxis yAxisId="right" orientation="right" domain={[0, 100]} />
-                <Tooltip />
-                <Legend />
-  
-                <Bar
-                  yAxisId="left"
-                  dataKey="totalDias"
-                  name="Impacto (Dias Acumulados)"
-                  fill="#6366f1"
-                  onClick={(d) => setSelectedStatus(d.status)}
-                />
-  
-                <Line
-                  yAxisId="right"
-                  type="monotone"
-                  dataKey="acumulado"
-                  name="% Acumulado"
-                  stroke="#ef4444"
-                  strokeWidth={3}
-                />
-              </ComposedChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-  
-        {selectedStatus && (
-          <div className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-200">
-            <h4 className="text-lg font-black mb-4">
-              Pedidos no Status: {selectedStatus}
-            </h4>
-  
-            <div className="max-h-[400px] overflow-auto text-sm">
-              <table className="w-full text-left">
-                <thead className="bg-slate-100">
-                  <tr>
-                    <th className="p-2">Pedido</th>
-                    <th className="p-2">Data Entrada</th>
-                    <th className="p-2">Dias em Aberto</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data
-                    .filter(
-                      (item) =>
-                        String(item.STATUS).toUpperCase().trim() ===
-                        selectedStatus
-                    )
-                    .map((item, idx) => {
-                      const entry = safeGetISODate(item.DATA_ENTRADA);
-                      const aging = entry
-                        ? Math.ceil(
-                            (new Date() - new Date(entry)) /
-                              (1000 * 60 * 60 * 24)
-                          )
-                        : "-";
-  
-                      return (
-                        <tr key={idx} className="border-b">
-                          <td className="p-2">
-                            {item.PEDIDO || item.PI || "-"}
-                          </td>
-                          <td className="p-2">
-                            {entry
-                              ? new Date(entry).toLocaleDateString("pt-BR")
-                              : "-"}
-                          </td>
-                          <td className="p-2 font-bold">{aging}</td>
-                        </tr>
-                      );
-                    })}
-                </tbody>
-              </table>
+  return (
+    <div className="min-h-screen bg-slate-50 font-sans text-slate-900 overflow-x-hidden">
+      <div className="w-full px-4 py-4 md:px-10 md:py-8 transition-all duration-300">
+        <header className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="bg-indigo-600 p-2.5 rounded-2xl shadow-lg">
+              <Activity className="text-white" size={24} />
             </div>
+            <div>
+              <h1 className="text-2xl font-black text-slate-800 tracking-tight">Supply Chain <span className="text-indigo-600">DepFMRJ</span></h1>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">Fluxo & Lead Time Analytics</p>
+            </div>
+          </div>
+          <label className="cursor-pointer px-6 py-2.5 rounded-xl font-bold transition-all flex items-center gap-2 shadow-sm bg-white border border-slate-200 hover:border-indigo-500 hover:text-indigo-600 text-sm">
+            <Upload size={18} /> {fileName || "Carregar Planilha"}
+            <input type="file" className="hidden" accept=".xlsx, .xls, .csv" onChange={handleFileUpload} disabled={!libLoaded} />
+          </label>
+        </header>
+
+        {data.length > 0 ? (
+          <div className="space-y-6">
+            {/* KPIs */}
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+              <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
+                <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-1">Entradas (Corte)</p>
+                <p className="text-2xl font-black text-slate-800">{selectionSummary.entradas.toLocaleString()}</p>
+                <div className="mt-1 text-[10px] text-indigo-600 font-bold flex items-center gap-1">
+                  <TrendingUp size={12} /> {selectionSummary.mediaEntradasPeriodo}/dia
+                </div>
+              </div>
+              <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
+                <p className="text-emerald-500 text-[10px] font-black uppercase tracking-widest mb-1 italic">Saídas (Corte)</p>
+                <p className="text-2xl font-black text-slate-800">{selectionSummary.separacoes.toLocaleString()}</p>
+                <div className="mt-1 text-[10px] text-emerald-600 font-bold flex items-center gap-1">
+                  <CheckCircle2 size={12} /> {selectionSummary.mediaSeparacoesPeriodo}/dia
+                </div>
+              </div>
+              <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
+                <p className="text-purple-500 text-[10px] font-black uppercase tracking-widest mb-1 italic">Lead Time Médio</p>
+                <p className="text-2xl font-black text-slate-800">{selectionSummary.avgLeadTimePeriodo} <span className="text-xs text-slate-400 font-bold">dias</span></p>
+                <div className="mt-1 text-[10px] text-purple-600 font-bold flex items-center gap-1">
+                  <Clock size={12} /> (Expedidos)
+                </div>
+              </div>
+              <div className={`p-6 rounded-3xl shadow-sm border-2 transition-all ${selectionSummary.balanco >= 0 ? 'bg-emerald-50 border-emerald-100' : 'bg-orange-50 border-orange-100'}`}>
+                <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-1 italic">Balanço</p>
+                <p className={`text-2xl font-black ${selectionSummary.balanco >= 0 ? 'text-emerald-700' : 'text-orange-700'}`}>
+                  {selectionSummary.balanco > 0 ? `+${selectionSummary.balanco}` : selectionSummary.balanco}
+                </p>
+              </div>
+              <button onClick={analyzeWithAI} disabled={isAnalyzing} className="group p-6 rounded-3xl shadow-lg transition-all flex flex-col justify-center items-start bg-indigo-600 text-white hover:bg-indigo-700 overflow-hidden">
+                <p className="text-[10px] font-bold uppercase tracking-widest mb-1 text-indigo-200 italic">Consultoria AI</p>
+                <div className="flex items-center gap-2 w-full justify-between relative z-10">
+                  <span className="text-lg font-bold">Analisar ✨</span>
+                  {isAnalyzing ? <Loader2 size={20} className="animate-spin" /> : <Sparkles size={20} />}
+                </div>
+              </button>
+            </div>
+
+            {aiAnalysis && (
+              <div className="p-1 bg-gradient-to-br from-indigo-100 to-purple-100 rounded-[34px] shadow-xl">
+                <div className="p-8 bg-white rounded-[32px]">
+                  <div className="flex items-center gap-3 mb-4"><Target className="text-indigo-600" /><h3 className="text-lg font-black">Diagnóstico Operacional</h3></div>
+                  <div className="text-slate-700 text-sm leading-relaxed whitespace-pre-wrap">{aiAnalysis}</div>
+                </div>
+              </div>
+            )}
+
+            {/* Seletor Global de Período */}
+            <div className="bg-white p-6 rounded-[30px] shadow-sm border border-slate-200 mb-6">
+            
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider">
+                  Seleção de Período de Análise
+                </h3>
+            
+                {/* Datas somente nas pontas */}
+                <div className="text-sm font-semibold text-slate-600">
+                  {chartData[visibleRange.startIndex]?.date &&
+                   chartData[visibleRange.endIndex]?.date && (
+                    <>
+                      {new Date(chartData[visibleRange.startIndex].date).toLocaleDateString('pt-BR')}
+                      {"  —  "}
+                      {new Date(chartData[visibleRange.endIndex].date).toLocaleDateString('pt-BR')}
+                    </>
+                  )}
+                </div>
+              </div>
+            
+              <div className="h-[60px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <ComposedChart data={chartData}>
+                    
+                    {/* XAxis invisível */}
+                    <XAxis dataKey="date" hide />
+            
+                    <Brush
+                      dataKey="date"
+                      height={35}
+                      stroke="#cbd5e1"
+                      fill="#f1f5f9"
+                      travellerWidth={12}
+                      onChange={(r) =>
+                        r &&
+                        setVisibleRange({
+                          startIndex: r.startIndex,
+                          endIndex: r.endIndex,
+                        })
+                      }
+                    />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+            
+            </div>
+
+            {/* Fluxo + Lead Time lado a lado */}
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+
+            {/* Volume de Fluxo */}
+            <div className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-200">
+              <h3 className="text-lg font-black text-slate-800 mb-6">
+                Taxa de Liberação X Taxa de Expedição
+              </h3>
+              <div className="h-[300px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <ComposedChart data={visibleData} syncId="masterSync">
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                    <XAxis dataKey="date" hide />
+                    <YAxis tick={{fontSize: 10}} axisLine={false} />
+                    <Tooltip labelFormatter={v => `Data: ${new Date(v).toLocaleDateString('pt-BR')}`} />
+                    <Legend verticalAlign="top" align="right" />
+                    <Bar dataKey="entradas" name="Vol. Entrada" fill="#e2e8f0" barSize={8} radius={[4,4,0,0]} />
+                    <Line type="monotone" dataKey="ma7_entradas" name="MM7 Liberação" stroke="#3b82f6" strokeWidth={2.5} dot={false} />
+                    <Line type="monotone" dataKey="ma7_separacoes" name="MM7 Saída" stroke="#10b981" strokeWidth={2.5} dot={false} />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          
+            {/* Lead Time e Brush */}
+            <div className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-200">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-black text-slate-800">
+                  Tempo de Atendimento
+                </h3>
+                <div className="bg-indigo-50 px-3 py-1 rounded-full text-[10px] text-indigo-600 font-black">
+                  FILTRO: {selectionSummary.numDias} DIAS
+                </div>
+              </div>
+          
+              <div className="h-[420px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <ComposedChart data={visibleData} syncId="masterSync">
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                    <XAxis 
+                      dataKey="date" 
+                      tick={{fontSize: 9, angle: -35, textAnchor: 'end'}} 
+                      tickFormatter={v => v ? v.split('-')[2] + '/' + v.split('-')[1] : ''} 
+                      height={60}
+                    />
+                    <YAxis unit="d" tick={{fontSize: 10}} axisLine={false} />
+                    <Tooltip labelFormatter={v => `Data: ${new Date(v).toLocaleDateString('pt-BR')}`} />
+                    <Legend verticalAlign="top" align="right" />
+          
+                    <Area 
+                      type="monotone" 
+                      dataKey="channelLower" 
+                      stackId="volStack" 
+                      stroke="none" 
+                      fill="transparent" 
+                      legendType="none" 
+                      activeDot={false}
+                    />
+                    <Area 
+                      type="monotone" 
+                      dataKey="channelHeight" 
+                      name="Volatilidade (Desvio)"
+                      stackId="volStack" 
+                      stroke="none" 
+                      fill="#d8b4fe" 
+                      opacity={0.3} 
+                    />
+          
+                    <Line type="monotone" dataKey="leadTimeMa30" name="MM30" stroke="#94a3b8" strokeWidth={2} strokeDasharray="5 5" dot={false} />
+                    <Line type="monotone" dataKey="leadTimeMa7" name="MM7 Atendimento" stroke="#7c3aed" strokeWidth={3} dot={false} />
+
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          
+          </div>
+
+            {/* Cancelamentos e PIs */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-200">
+                <div className="flex items-center gap-2 mb-6">
+                  <XCircle className="text-red-500" size={20} />
+                  <h3 className="text-lg font-black text-slate-800">Cancelados vs Liberados (Dinâmico)</h3>
+                </div>
+                <div className="h-[300px] w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={dynamicAnalysis.monthly}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                      <XAxis dataKey="month" tick={{fontSize: 10, fontWeight: 700}} />
+                      <YAxis tick={{fontSize: 10}} axisLine={false} />
+                      <Tooltip />
+                      <Legend />
+                      <Bar dataKey="liberados" name="Liberados" fill="#6366f1" radius={[4,4,0,0]} />
+                      <Bar dataKey="cancelados" name="Cancelados" fill="#ef4444" radius={[4,4,0,0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              <div className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-200">
+                <div className="flex items-center gap-2 mb-6">
+                  <Package className="text-amber-500" size={20} />
+                  <h3 className="text-lg font-black text-slate-800">PI cancelados no período X PI fornecidos</h3>
+                </div>
+                <div className="flex flex-col md:flex-row items-center gap-8 h-[300px]">
+                  <div className="w-full md:w-1/2 h-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={[
+                            { name: 'PIs Entregues', value: dynamicAnalysis.piStats.delivered },
+                            { name: 'PIs Cancelados', value: dynamicAnalysis.piStats.cancelled }
+                          ]}
+                          innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value"
+                        >
+                          <Cell fill="#10b981" /><Cell fill="#f43f5e" />
+                        </Pie>
+                        <Tooltip />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="w-full md:w-1/2 space-y-4">
+                    <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                      <p className="text-[10px] font-black text-slate-400 uppercase">PIs Únicos</p>
+                      <p className="text-xl font-black text-slate-800">{dynamicAnalysis.piStats.totalUnique}</p>
+                    </div>
+                    <div className="bg-red-50 p-4 rounded-2xl border border-red-100">
+                      <p className="text-[10px] font-black text-red-400 uppercase">Taxa de cancelamento (Análise por PI)</p>
+                      <p className="text-xl font-black text-red-600">
+                        {dynamicAnalysis.piStats.totalUnique > 0 ? ((dynamicAnalysis.piStats.cancelled / dynamicAnalysis.piStats.totalUnique) * 100).toFixed(1) : 0}%
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-32 flex flex-col items-center justify-center text-center">
+            <div className="w-40 h-40 bg-white rounded-[50px] shadow-2xl flex items-center justify-center mb-8 border border-slate-100">
+              <FileSpreadsheet size={60} className="text-indigo-500 opacity-20" />
+            </div>
+            <h2 className="text-2xl font-black text-slate-800 tracking-tight">Supply Monitor 3.6</h2>
+            <p className="text-slate-400 text-sm max-w-sm mt-2 font-medium">
+              Importe o arquivo do WMS para visualizar o painel analítico histórico.
+            </p>
           </div>
         )}
       </div>
-    );
-  
-    const renderDashboard = () => (
-      <div className="space-y-6">
-        {/* TODO: Aqui permanece TODO seu conteúdo atual do dashboard
-            (KPIs + gráficos + AI + cancelamentos)
-            NÃO alterei essa parte para não duplicar 1000 linhas novamente.
-            Basta deixar exatamente como já está dentro do seu bloco atual.
-        */}
-      </div>
-    );
-  
-    // ============================
-    // RETURN PRINCIPAL LIMPO
-    // ============================
-  
-    return (
-      <div className="min-h-screen bg-slate-50 font-sans text-slate-900 overflow-x-hidden">
-        <div className="w-full px-4 py-4 md:px-10 md:py-8 transition-all duration-300">
-          <header className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
-
-            {/* TÍTULO */}
-            <div>
-              <h1 className="text-3xl font-black tracking-tight text-slate-800">
-                Supply Monitor 3.6
-              </h1>
-              <p className="text-slate-400 text-sm">
-                Painel Analítico Operacional
-              </p>
-            </div>
-          
-            {/* BOTÕES */}
-            <div className="flex flex-wrap gap-3 items-center">
-          
-              {/* Upload Excel */}
-              <label className="cursor-pointer flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl shadow transition">
-                <Upload size={18} />
-                <span className="text-sm font-semibold">
-                  {fileName ? "Trocar Arquivo" : "Carregar Excel"}
-                </span>
-                <input
-                  type="file"
-                  accept=".xlsx, .xls"
-                  onChange={handleFileUpload}
-                  className="hidden"
-                />
-              </label>
-          
-              {/* Alternar visão */}
-              {data.length > 0 && (
-                <button
-                  onClick={() =>
-                    setViewMode(viewMode === "dashboard" ? "backlog" : "dashboard")
-                  }
-                  className="bg-white border border-slate-300 px-4 py-2 rounded-xl text-sm font-semibold hover:bg-slate-100 transition"
-                >
-                  {viewMode === "dashboard" ? "Ver Backlog" : "Voltar ao Dashboard"}
-                </button>
-              )}
-          
-            </div>
-          </header>
-
-  
-          {data.length === 0 && renderEmptyState()}
-          {data.length > 0 && viewMode === "dashboard" && renderDashboard()}
-          {data.length > 0 && viewMode === "backlog" && renderBacklog()}
-        </div>
-      </div>
-    );
-  };
+    </div>
+  );
+};
 
 export default App;
-
