@@ -535,8 +535,49 @@ const App = () => {
       <div className="min-h-screen bg-slate-50 font-sans text-slate-900 overflow-x-hidden">
         <div className="w-full px-4 py-4 md:px-10 md:py-8 transition-all duration-300">
           <header className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
-            {/* HEADER ORIGINAL MANTIDO */}
+
+            {/* TÍTULO */}
+            <div>
+              <h1 className="text-3xl font-black tracking-tight text-slate-800">
+                Supply Monitor 3.6
+              </h1>
+              <p className="text-slate-400 text-sm">
+                Painel Analítico Operacional
+              </p>
+            </div>
+          
+            {/* BOTÕES */}
+            <div className="flex flex-wrap gap-3 items-center">
+          
+              {/* Upload Excel */}
+              <label className="cursor-pointer flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl shadow transition">
+                <Upload size={18} />
+                <span className="text-sm font-semibold">
+                  {fileName ? "Trocar Arquivo" : "Carregar Excel"}
+                </span>
+                <input
+                  type="file"
+                  accept=".xlsx, .xls"
+                  onChange={handleFileUpload}
+                  className="hidden"
+                />
+              </label>
+          
+              {/* Alternar visão */}
+              {data.length > 0 && (
+                <button
+                  onClick={() =>
+                    setViewMode(viewMode === "dashboard" ? "backlog" : "dashboard")
+                  }
+                  className="bg-white border border-slate-300 px-4 py-2 rounded-xl text-sm font-semibold hover:bg-slate-100 transition"
+                >
+                  {viewMode === "dashboard" ? "Ver Backlog" : "Voltar ao Dashboard"}
+                </button>
+              )}
+          
+            </div>
           </header>
+
   
           {data.length === 0 && renderEmptyState()}
           {data.length > 0 && viewMode === "dashboard" && renderDashboard()}
