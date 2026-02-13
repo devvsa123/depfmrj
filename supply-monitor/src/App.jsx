@@ -638,12 +638,28 @@ const App = () => {
                 <PieChart>
                   <Pie
                     data={[
-                      { name: 'PIs Entregues', value: dynamicAnalysis.piStats.delivered },
-                      { name: 'PIs Cancelados', value: dynamicAnalysis.piStats.cancelled }
+                      { name: 'PIs Entregues', value: dynamicAnalysis.piStats.delivered, type: 'delivered' },
+                      { name: 'PIs Cancelados', value: dynamicAnalysis.piStats.cancelled, type: 'cancelled' }
                     ]}
-                    innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value"
+                    innerRadius={60} 
+                    outerRadius={80} 
+                    paddingAngle={5} 
+                    dataKey="value"
+                    // REMOVI O ONCLICK DAQUI (Inseguro em produção)
                   >
-                    <Cell fill="#10b981" /><Cell fill="#f43f5e" />
+                    {/* Mapeamento manual das células para garantir o clique direto */}
+                    {[
+                      { type: 'delivered', fill: '#10b981' }, // Verde
+                      { type: 'cancelled', fill: '#f43f5e' }  // Vermelho
+                    ].map((entry, index) => (
+                      <Cell 
+                        key={`cell-${index}`} 
+                        fill={entry.fill} 
+                        className="cursor-pointer hover:opacity-80 transition-opacity"
+                        // ADICIONEI O ONCLICK AQUI (Seguro)
+                        onClick={() => setSelectedPiSegment(entry.type)}
+                      />
+                    ))}
                   </Pie>
                   <Tooltip />
                 </PieChart>
