@@ -821,18 +821,31 @@ const App = () => {
             <p className="text-xs text-slate-400 mb-4 font-medium italic">Clique nas barras para ver os detalhes</p>
             <div className="h-[350px] w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={backlogAnalysis.buckets} layout="vertical" onClick={(data) => {
-                    if (data && data.activePayload && data.activePayload.length > 0) {
-                        setSelectedBucket(data.activePayload[0].payload);
-                    }
-                }}>
+                {/* 1. Removi o onClick do BarChart aqui, pois ele é instável */}
+                <BarChart data={backlogAnalysis.buckets} layout="vertical">
                   <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
                   <XAxis type="number" hide />
-                  <YAxis dataKey="name" type="category" width={100} tick={{fontSize: 11, fontWeight: 700, fill: '#64748b'}} axisLine={false} />
-                  <Tooltip cursor={{fill: '#f1f5f9', opacity: 0.5}} contentStyle={{borderRadius: 12, border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}} />
-                  <Bar dataKey="count" name="Pedidos" radius={[0, 4, 4, 0]} barSize={32} className="cursor-pointer">
+                  <YAxis 
+                    dataKey="name" 
+                    type="category" 
+                    width={100} 
+                    tick={{fontSize: 11, fontWeight: 700, fill: '#64748b'}} 
+                    axisLine={false} 
+                  />
+                  <Tooltip 
+                    cursor={{fill: '#f1f5f9', opacity: 0.5}} 
+                    contentStyle={{borderRadius: 12, border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}} 
+                  />
+                  <Bar dataKey="count" name="Pedidos" radius={[0, 4, 4, 0]} barSize={32}>
                     {backlogAnalysis.buckets.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.fill} className="hover:opacity-80 transition-opacity cursor-pointer" />
+                      <Cell 
+                        key={`cell-${index}`} 
+                        fill={entry.fill} 
+                        className="hover:opacity-80 transition-opacity cursor-pointer"
+                        // 2. ADICIONEI O ONCLICK AQUI NA CÉLULA
+                        // Isso garante que passamos exatamente o objeto 'entry' (o bucket) para o estado
+                        onClick={() => setSelectedBucket(entry)}
+                      />
                     ))}
                   </Bar>
                 </BarChart>
