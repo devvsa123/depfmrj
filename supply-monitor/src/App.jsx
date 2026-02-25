@@ -108,7 +108,7 @@ const App = () => {
     
     try {
       // 1. COLE A URL DIRETA QUE VOCÊ COPIOU DO VERCEL ABAIXO:
-      const urlDireta = "COLE_O_SEU_LINK_AQUI";
+      const urlDireta = "https://spxj2yln4kauap03.public.blob.vercel-storage.com/planilha_estoque.xls";
       
       const resFile = await fetch(`${urlDireta}?t=${new Date().getTime()}`);
       
