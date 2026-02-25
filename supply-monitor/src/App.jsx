@@ -105,20 +105,19 @@ const App = () => {
   const loadFromCloud = async () => {
     if (!libLoaded) return;
     setLoading(true);
-    setError("");
     
     try {
-      // 1. Descobre a URL do arquivo no Vercel
-      const resApi = await fetch('/api/get-estoque');
-      const dataApi = await resApi.json();
+      // 1. COLE A URL QUE VOCÊ COPIOU DO VERCEL AQUI DENTRO DAS ASPAS:
+      const urlDireta = "https://COLE_AQUI_A_URL_DA_PLANILHA.public.blob.vercel-storage.com/planilha_estoque.xls";
       
-      if (!dataApi.url) throw new Error("Planilha não encontrada na nuvem. O robô já rodou?");
+      // 2. Baixa o Excel direto da nuvem (o getTime() no final impede o navegador de usar cache velho)
+      const resFile = await fetch(`${urlDireta}?t=${new Date().getTime()}`);
       
-      // 2. Baixa o Excel direto da nuvem
-      const resFile = await fetch(`${dataApi.url}?t=${new Date().getTime()}`);
+      if (!resFile.ok) throw new Error("Acesso negado ou planilha não encontrada.");
+      
       const arrayBuffer = await resFile.arrayBuffer();
       
-      // 3. Lê com o SheetJS
+      // 3. Lê os dados usando o SheetJS (mesmo motor do upload manual)
       const wb = window.XLSX.read(arrayBuffer, { type: 'array', cellDates: true });
       const wsname = wb.SheetNames[0];
       const jsonData = window.XLSX.utils.sheet_to_json(wb.Sheets[wsname]);
@@ -133,6 +132,18 @@ const App = () => {
         });
         return newItem;
       });
+      
+      setData(normalizedData);
+      setFileName("Sincronizado via Robô 🤖");
+      
+    } catch (err) {
+      console.error(err);
+      // Coloquei um alerta visual caso dê algum errinho para sabermos na hora!
+      alert("⚠️ Falha na sincronização: " + (err.message || "Erro desconhecido")); 
+    } finally {
+      setLoading(false);
+    }
+  };
       
       setData(normalizedData);
       setFileName("Sincronizado via Robô 🤖");
