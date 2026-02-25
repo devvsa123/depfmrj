@@ -17,14 +17,16 @@ const App = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [libLoaded, setLibLoaded] = useState(false);
+  
+  // NOVA VARIÁVEL PARA GUARDAR A HORA DA ATUALIZAÇÃO
   const [lastSync, setLastSync] = useState(null);
   
   // Controle de Abas
-  const [activeTab, setActiveTab] = useState("dashboard"); // 'dashboard' | 'backlog'
+  const [activeTab, setActiveTab] = useState("dashboard");
 
   // Controle de Drill-down (Detalhes da Barra/Pizza)
   const [selectedBucket, setSelectedBucket] = useState(null);
-  const [selectedPiSegment, setSelectedPiSegment] = useState(null); // 'delivered' | 'cancelled'
+  const [selectedPiSegment, setSelectedPiSegment] = useState(null); 
 
   const [visibleRange, setVisibleRange] = useState({ startIndex: 0, endIndex: 0 });
   const [aiAnalysis, setAiAnalysis] = useState("");
@@ -72,6 +74,7 @@ const App = () => {
     setError("");
     setAiAnalysis("");
     setFileName(file.name);
+    setLastSync(new Date().toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }));
 
     const reader = new FileReader();
     reader.onload = (evt) => {
@@ -102,18 +105,28 @@ const App = () => {
     reader.readAsBinaryString(file);
   };
 
-  // --- NOVA FUNÇÃO: PUXAR DADOS DA NUVEM (VERCEL BLOB) ---
+  // --- FUNÇÃO DE PUXAR DA NUVEM (COM LEITURA DE DATA) ---
   const loadFromCloud = async () => {
     if (!libLoaded) return;
     setLoading(true);
+    setError("");
     
     try {
-      // 1. COLE A URL DIRETA QUE VOCÊ COPIOU DO VERCEL ABAIXO:
-      const urlDireta = "https://spxj2yln4kauap03.public.blob.vercel-storage.com/planilha_estoque.xls";
+      // ⚠️ COLE O SEU LINK REAL AQUI DENTRO DAS ASPAS:
+      const urlDireta = "COLE_O_SEU_LINK_AQUI";
       
       const resFile = await fetch(`${urlDireta}?t=${new Date().getTime()}`);
       
       if (!resFile.ok) throw new Error("Acesso negado ou planilha não encontrada.");
+      
+      // CAPTURA A HORA QUE O ARQUIVO FOI MODIFICADO NA NUVEM
+      const dataHeader = resFile.headers.get('last-modified');
+      if (dataHeader) {
+        const dataUpload = new Date(dataHeader);
+        setLastSync(dataUpload.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }));
+      } else {
+        setLastSync(new Date().toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }));
+      }
       
       const arrayBuffer = await resFile.arrayBuffer();
       
@@ -122,16 +135,6 @@ const App = () => {
       const jsonData = window.XLSX.utils.sheet_to_json(wb.Sheets[wsname]);
       
       if (jsonData.length === 0) throw new Error("A planilha da nuvem está vazia.");
-      // --- NOVA PARTE: LENDO A DATA DO ARQUIVO ---
-      const dataHeader = resFile.headers.get('last-modified');
-      if (dataHeader) {
-        const dataUpload = new Date(dataHeader);
-        setLastSync(dataUpload.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }));
-      } else {
-        // Plano B: se a nuvem não mandar a data, usa a hora que o botão foi clicado
-        setLastSync(new Date().toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }));
-      }
-      // -------------------------------------------
 
       const normalizedData = jsonData.map(item => {
         const newItem = {};
@@ -169,7 +172,7 @@ const App = () => {
     window.XLSX.writeFile(wb, `${sheetName}_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
-  // --- PROCESSAMENTO PARA GRÁFICOS DIÁRIOS (Fluxo e Lead Time) ---
+  // --- PROCESSAMENTO PARA GRÁFICOS DIÁRIOS ---
   const chartData = useMemo(() => {
     if (data.length === 0) return [];
     const filteredForCharts = data.filter(item => String(item.STATUS || "").toUpperCase().trim() !== "CANCELADO");
@@ -250,10 +253,7 @@ const App = () => {
 
   const visibleData = useMemo(() => {
     if (!chartData.length) return [];
-    return chartData.slice(
-      visibleRange.startIndex,
-      visibleRange.endIndex + 1
-    );
+    return chartData.slice(visibleRange.startIndex, visibleRange.endIndex + 1);
   }, [chartData, visibleRange]);
 
   const dynamicAnalysis = useMemo(() => {
@@ -1041,19 +1041,30 @@ const App = () => {
               </div>
             </div>
             
-            <div className="flex items-center gap-3">
-              <button 
-                onClick={loadFromCloud} 
-                disabled={loading || !libLoaded}
-                className="cursor-pointer px-6 py-2.5 rounded-xl font-bold transition-all flex items-center gap-2 shadow-sm bg-indigo-600 border border-indigo-600 text-white hover:bg-indigo-700 text-sm disabled:opacity-50"
-              >
-                {loading ? <Loader2 size={18} className="animate-spin" /> : <RefreshCw size={18} />}
-                Sincronizar Robô
-              </button>
-              <label className="cursor-pointer px-6 py-2.5 rounded-xl font-bold transition-all flex items-center gap-2 shadow-sm bg-white border border-slate-200 hover:border-indigo-500 hover:text-indigo-600 text-sm disabled:opacity-50">
-                <Upload size={18} /> {fileName || "Upload Manual"}
-                <input type="file" className="hidden" accept=".xlsx, .xls, .csv" onChange={handleFileUpload} disabled={!libLoaded || loading} />
-              </label>
+            {/* O bloco dos botões modificado para mostrar a hora */}
+            <div className="flex flex-col items-end gap-2">
+              <div className="flex items-center gap-3">
+                <button 
+                  onClick={loadFromCloud} 
+                  disabled={loading || !libLoaded}
+                  className="cursor-pointer px-6 py-2.5 rounded-xl font-bold transition-all flex items-center gap-2 shadow-sm bg-indigo-600 border border-indigo-600 text-white hover:bg-indigo-700 text-sm disabled:opacity-50"
+                >
+                  {loading ? <Loader2 size={18} className="animate-spin" /> : <RefreshCw size={18} />}
+                  Sincronizar Robô
+                </button>
+                <label className="cursor-pointer px-6 py-2.5 rounded-xl font-bold transition-all flex items-center gap-2 shadow-sm bg-white border border-slate-200 hover:border-indigo-500 hover:text-indigo-600 text-sm disabled:opacity-50">
+                  <Upload size={18} /> {fileName || "Upload Manual"}
+                  <input type="file" className="hidden" accept=".xlsx, .xls, .csv" onChange={handleFileUpload} disabled={!libLoaded || loading} />
+                </label>
+              </div>
+              
+              {/* O novo selo de horário da última sincronização */}
+              {lastSync && (
+                <div className="text-[11px] text-slate-500 font-bold flex items-center gap-1.5 bg-slate-200/50 px-3 py-1.5 rounded-lg border border-slate-200 shadow-sm animate-in fade-in">
+                  <Clock size={12} className="text-indigo-500" />
+                  Última atualização: <span className="text-slate-700">{lastSync}</span>
+                </div>
+              )}
             </div>
           </div>
 
