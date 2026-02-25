@@ -17,6 +17,7 @@ const App = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [libLoaded, setLibLoaded] = useState(false);
+  const [lastSync, setLastSync] = useState(null);
   
   // Controle de Abas
   const [activeTab, setActiveTab] = useState("dashboard"); // 'dashboard' | 'backlog'
@@ -121,6 +122,16 @@ const App = () => {
       const jsonData = window.XLSX.utils.sheet_to_json(wb.Sheets[wsname]);
       
       if (jsonData.length === 0) throw new Error("A planilha da nuvem está vazia.");
+      // --- NOVA PARTE: LENDO A DATA DO ARQUIVO ---
+      const dataHeader = resFile.headers.get('last-modified');
+      if (dataHeader) {
+        const dataUpload = new Date(dataHeader);
+        setLastSync(dataUpload.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }));
+      } else {
+        // Plano B: se a nuvem não mandar a data, usa a hora que o botão foi clicado
+        setLastSync(new Date().toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }));
+      }
+      // -------------------------------------------
 
       const normalizedData = jsonData.map(item => {
         const newItem = {};
