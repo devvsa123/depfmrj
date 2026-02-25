@@ -146,7 +146,7 @@ const App = () => {
       });
       
       setData(normalizedData);
-      setFileName("Sincronizado via Robô 🤖");
+      setFileName("Sincronização manual");
       
     } catch (err) {
       console.error(err);
