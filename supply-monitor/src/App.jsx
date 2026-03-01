@@ -90,6 +90,7 @@ const App = () => {
     return new Date().toISOString().split('T')[0];
   });
 
+  // ⚠️ SEGURANÇA: Coloque sua chave da API aqui novamente no seu código do GitHub.
   const apiKey = "AIzaSyB7-09YzTnSfZC-tYpdzPBbUbSDoWKDjX0";
 
   useEffect(() => {
@@ -651,7 +652,6 @@ const App = () => {
     9. Finalize com um parecer estratégico claro.
     `;
     
-    // VERIFICAÇÃO DE SEGURANÇA: Avisa se a chave estiver vazia.
     if (!apiKey || apiKey.trim() === "") {
         setAiError("⚠️ Chave da API do Google não encontrada. Insira sua apiKey no código.");
         setIsAnalyzing(false);
@@ -659,9 +659,9 @@ const App = () => {
     }
 
     try {
-      // ATUALIZAÇÃO: Mudamos para o modelo estável 'gemini-1.5-flash'
+      // ATUALIZAÇÃO CORRIGIDA: Voltando o modelo para a versão original de preview que é 100% compatível com sua chave atual na Vercel/GitHub
       const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -673,7 +673,6 @@ const App = () => {
       
       const result = await response.json();
       
-      // TRATAMENTO DE ERRO DA API (Ex: Chave inválida ou cota excedida)
       if (result.error) {
           throw new Error(`Erro Google API: ${result.error.message}`);
       }
@@ -684,7 +683,6 @@ const App = () => {
       setAiAnalysis(cleanedText.trim());
     } catch (err) {
       console.error("Erro completo na IA:", err);
-      // Agora o erro capturado será mostrado na tela
       setAiError(err.message || "Erro desconhecido ao conectar com a IA.");
     } finally {
       setIsAnalyzing(false);
@@ -844,7 +842,7 @@ const App = () => {
           </button>
         </div>
 
-        {/* NOVO: Bloco para exibir erros da Inteligência Artificial */}
+        {/* Bloco para exibir erros da Inteligência Artificial */}
         {aiError && (
           <div className="p-4 bg-red-50 border border-red-200 rounded-2xl shadow-sm mt-4 flex items-center gap-3 text-red-700 animate-in fade-in zoom-in">
             <AlertTriangle size={24} className="text-red-500" />
