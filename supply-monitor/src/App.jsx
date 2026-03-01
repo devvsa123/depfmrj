@@ -651,9 +651,17 @@ const App = () => {
     9. Finalize com um parecer estratégico claro.
     `;
     
+    // VERIFICAÇÃO DE SEGURANÇA: Avisa se a chave estiver vazia.
+    if (!apiKey || apiKey.trim() === "") {
+        setAiError("⚠️ Chave da API do Google não encontrada. Insira sua apiKey no código.");
+        setIsAnalyzing(false);
+        return;
+    }
+
     try {
+      // ATUALIZAÇÃO: Mudamos para o modelo estável 'gemini-1.5-flash-latest'
       const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -662,13 +670,22 @@ const App = () => {
           }),
         }
       );
+      
       const result = await response.json();
+      
+      // TRATAMENTO DE ERRO DA API (Ex: Chave inválida ou cota excedida)
+      if (result.error) {
+          throw new Error(`Erro Google API: ${result.error.message}`);
+      }
+
       const rawText = result.candidates?.[0]?.content?.parts?.[0]?.text || "";
 
       const cleanedText = rawText.replace(/[#*`>-]/g, "").replace(/---+/g, "").replace(/\n{3,}/g, "\n\n"); 
       setAiAnalysis(cleanedText.trim());
     } catch (err) {
-      setAiError("Erro na análise.");
+      console.error("Erro completo na IA:", err);
+      // Agora o erro capturado será mostrado na tela
+      setAiError(err.message || "Erro desconhecido ao conectar com a IA.");
     } finally {
       setIsAnalyzing(false);
     }
@@ -827,8 +844,22 @@ const App = () => {
           </button>
         </div>
 
+        {/* NOVO: Bloco para exibir erros da Inteligência Artificial */}
+        {aiError && (
+          <div className="p-4 bg-red-50 border border-red-200 rounded-2xl shadow-sm mt-4 flex items-center gap-3 text-red-700 animate-in fade-in zoom-in">
+            <AlertTriangle size={24} className="text-red-500" />
+            <div>
+              <h4 className="font-bold text-sm">Falha na Análise da IA</h4>
+              <p className="text-xs font-medium">{aiError}</p>
+            </div>
+            <button onClick={() => setAiError("")} className="ml-auto p-2 hover:bg-red-100 rounded-xl transition-colors">
+              <X size={16} />
+            </button>
+          </div>
+        )}
+
         {aiAnalysis && (
-          <div className="p-1 bg-gradient-to-br from-indigo-100 to-purple-100 rounded-[34px] shadow-xl mt-2">
+          <div className="p-1 bg-gradient-to-br from-indigo-100 to-purple-100 rounded-[34px] shadow-xl mt-4">
             <div className="p-8 bg-white rounded-[32px]">
               <div className="flex items-center gap-3 mb-4"><Target className="text-indigo-600" /><h3 className="text-lg font-black">Diagnóstico Operacional</h3></div>
               <div className="text-slate-700 text-sm leading-relaxed whitespace-pre-wrap">{aiAnalysis}</div>
