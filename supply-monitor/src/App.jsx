@@ -659,9 +659,12 @@ const App = () => {
     }
 
     try {
-      // ATUALIZAÇÃO CORRIGIDA: Voltando o modelo para a versão original de preview que é 100% compatível com sua chave atual na Vercel/GitHub
+      // ----------------------------------------------------------------------------------
+      // CORREÇÃO APLICADA AQUI: Voltamos para a forma clássica e estável de chamar a API
+      // usando v1 e o modelo gemini-1.5-flash. Isso garante compatibilidade com sua chave.
+      // ----------------------------------------------------------------------------------
       const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`,
+        `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -674,7 +677,7 @@ const App = () => {
       const result = await response.json();
       
       if (result.error) {
-          throw new Error(`Erro Google API: ${result.error.message}`);
+          throw new Error(`${result.error.message}`);
       }
 
       const rawText = result.candidates?.[0]?.content?.parts?.[0]?.text || "";
@@ -973,7 +976,7 @@ const App = () => {
     if (!backlogAnalysis || backlogAnalysis.totalPending === 0) {
       return (
         <div className="mt-20 flex flex-col items-center justify-center text-center animate-in fade-in zoom-in duration-300">
-          <div className="w-32 h-32 bg-emerald-50 rounded-full flex items-center justify-center mb-6"><CheckCircle2 size={48} className="text-emerald-500" /></div>
+          <div className="w-32 h-32 bg-emerald-50 rounded-full flex items-center justify-center mb-6"><CheckCircle2 size={48} className="textemerald-500" /></div>
           <h2 className="text-2xl font-black text-slate-800">Fluxo Limpo!</h2>
           <p className="text-slate-400 mt-2">Nenhum pedido pendente encontrado fora dos status Expedido/Cancelado.</p>
         </div>
