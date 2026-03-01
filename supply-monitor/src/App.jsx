@@ -90,7 +90,7 @@ const App = () => {
     return new Date().toISOString().split('T')[0];
   });
 
-  // ⚠️ SEGURANÇA: Coloque sua chave da API aqui novamente
+  // ⚠️ SUA CHAVE DEVE SER COLADA AQUI NO GITHUB
   const apiKey = "AIzaSyB7-09YzTnSfZC-tYpdzPBbUbSDoWKDjX0";
 
   useEffect(() => {
@@ -594,105 +594,120 @@ const App = () => {
     if (chartData.length > 0) setVisibleRange({ startIndex: 0, endIndex: chartData.length - 1 });
   }, [chartData]);
 
-  // =========================================================================================
-  // NOVA FUNÇÃO DE INTELIGÊNCIA ARTIFICIAL
-  // Desenhada do zero para ler o Dashboard atual, o Backlog e as Falhas de Interface visíveis.
-  // Utiliza a URL e versão da API original que já provou funcionar na sua infraestrutura.
-  // =========================================================================================
+  // =====================================================================
+  // MOTOR DE IA RESTAURADO: Exatamente como no código antigo que funcionava,
+  // mas com o prompt atualizado para analisar o Backlog e Interface atuais.
+  // =====================================================================
   const analyzeWithAI = async () => {
-    if (!apiKey || apiKey.trim() === "") {
-      setAiError("⚠️ Chave da API do Google não foi encontrada no código.");
-      return;
-    }
-
     if (!chartData.length || isAnalyzing || !selectionSummary) return;
-
+    
     setIsAnalyzing(true);
     setAiError("");
     setAiAnalysis("");
+    
+    const totalEntradasHist = chartData.reduce((a, b) => a + (b.entradas || 0), 0);
+    const totalSaidasHist = chartData.reduce((a, b) => a + (b.separacoes || 0), 0);
+    const mediaHistoricaSaidas = totalSaidasHist / chartData.length;
+    const picoHistorico = Math.max(...chartData.map(d => d.separacoes || 0));
+    const mediaLeadHistorico = chartData.reduce((a, b) => a + (b.leadTimeDaily || 0), 0) / chartData.length;
+    
+    const periodoSaidas = selectionSummary.separacoes;
+    const periodoEntradas = selectionSummary.entradas;
+    const periodoMediaDiaria = periodoSaidas / selectionSummary.numDias;
+    const periodoLead = selectionSummary.avgLeadTimePeriodo;
+
+    const totalPendentes = backlogAnalysis?.totalPending || 0;
+    const diasPedidoMaisAntigo = backlogAnalysis?.oldestOrder?.daysOpen || 0;
+    const taxaSLA = slaAnalysis?.taxaNoPrazo || 0;
+
+    let resumoErrosInterface = "Nenhuma falha crítica detectada.";
+    if (interfaceAnalysis && interfaceAnalysis.falhasInterface.length > 0) {
+      const contagemErros = interfaceAnalysis.falhasInterface.reduce((acc, item) => {
+        const chave = `WMS [${item.STATUS || 'Vazio'}] x SINGRA [${item.singraStatus || 'Vazio'}]`;
+        acc[chave] = (acc[chave] || 0) + 1;
+        return acc;
+      }, {});
+      
+      resumoErrosInterface = Object.entries(contagemErros)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(erro => `${erro[1]} casos de ${erro[0]}`)
+        .join(" | ");
+    }
+    
+    const userQuery = `
+    Você é um consultor sênior de Supply Chain especializado em análise operacional.
+    
+    Analise os dados abaixo considerando TODO o histórico disponível e o período selecionado.
+    
+    DADOS HISTÓRICOS:
+    - Total histórico de entradas: ${totalEntradasHist}
+    - Total histórico de saídas: ${totalSaidasHist}
+    - Média histórica diária de expedição: ${mediaHistoricaSaidas.toFixed(2)}
+    - Pico histórico diário de expedição: ${picoHistorico}
+    - Lead Time médio histórico: ${mediaLeadHistorico.toFixed(2)} dias
+    
+    DADOS DO PERÍODO SELECIONADO:
+    - Entradas no período: ${periodoEntradas}
+    - Saídas no período: ${periodoSaidas}
+    - Média diária de expedição no período: ${periodoMediaDiaria.toFixed(2)}
+    - Lead Time médio no período: ${periodoLead} dias
+    - SLA (Entregas no prazo): ${taxaSLA}%
+
+    CENÁRIO DE FILA (BACKLOG):
+    - Volume Parado: ${totalPendentes} pedidos
+    - Gargalo Máximo: Pedido mais antigo está há ${diasPedidoMaisAntigo} dias parado.
+    
+    FALHAS DE INTERFACE SISTÊMICA (WMS x SINGRA):
+    - ${resumoErrosInterface}
+    
+    QUERO QUE VOCÊ:
+    1. Compare o desempenho atual com a média histórica.
+    2. Informe se a taxa de expedição está acima, dentro ou abaixo da média.
+    3. Avalie se estamos próximos de um pico histórico.
+    4. Alerte sobre os riscos na fila de backlog atual.
+    5. Dê uma diretriz estratégica focada em resolver as falhas de interface.
+    6. Escreva em formato executivo, direto, sem tabelas, sem fórmulas matemáticas.
+    7. Finalize com um parecer estratégico claro.
+    
+    Não use tabelas. Não repita os números em formato de cálculo. Seja analítico e estratégico.
+    `;
+    
+    if (!apiKey || apiKey.trim() === "") {
+        setAiError("⚠️ Chave da API não encontrada. Verifique a variável apiKey.");
+        setIsAnalyzing(false);
+        return;
+    }
 
     try {
-      // 1. Coleta e formatação limpa das métricas que a IA precisa saber
-      const dataInicial = chartData[visibleRange.startIndex]?.date || "N/A";
-      const dataFinal = chartData[visibleRange.endIndex]?.date || "N/A";
-      const totalPendentes = backlogAnalysis?.totalPending || 0;
-      const diasPedidoMaisAntigo = backlogAnalysis?.oldestOrder?.daysOpen || 0;
-      const statusMaisAntigo = backlogAnalysis?.oldestOrder?.STATUS || "N/A";
-      const taxaSLA = slaAnalysis?.taxaNoPrazo || 0;
-
-      // Coletando o novo "Resumo das Falhas de Interface" que você destacou
-      let resumoErrosInterface = "Nenhuma falha crítica detectada.";
-      if (interfaceAnalysis && interfaceAnalysis.falhasInterface.length > 0) {
-        const contagemErros = interfaceAnalysis.falhasInterface.reduce((acc, item) => {
-          const chave = `WMS [${item.STATUS || 'Vazio'}] x SINGRA [${item.singraStatus || 'Vazio'}]`;
-          acc[chave] = (acc[chave] || 0) + 1;
-          return acc;
-        }, {});
-        
-        // Pega as 5 maiores falhas para não estourar o limite de tokens da IA
-        resumoErrosInterface = Object.entries(contagemErros)
-          .sort((a, b) => b[1] - a[1])
-          .slice(0, 5)
-          .map(erro => `${erro[1]} casos de ${erro[0]}`)
-          .join(" | ");
-      }
-
-      // 2. Construção do Prompt Focado
-      const promptContexto = `
-        Aja como um Diretor de Logística analisando um dashboard de Supply Chain. 
-        Analise os dados abaixo e forneça um resumo executivo direto ao ponto (máximo de 2 parágrafos curtos).
-
-        [DADOS DO PERÍODO SELECIONADO: ${dataInicial} a ${dataFinal}]
-        - Pedidos Entrantes: ${selectionSummary.entradas}
-        - Pedidos Expedidos: ${selectionSummary.separacoes}
-        - Tempo Médio de Atendimento: ${selectionSummary.avgLeadTimePeriodo} dias
-        - SLA (Entregas no prazo definido): ${taxaSLA}%
-
-        [CENÁRIO DA FILA HOJE (BACKLOG)]
-        - Volume Total Parado: ${totalPendentes} pedidos
-        - Gargalo Máximo: O pedido mais antigo está há ${diasPedidoMaisAntigo} dias parado no status ${statusMaisAntigo}.
-        
-        [INTEGRAÇÃO SISTÊMICA WMS x SINGRA]
-        - Principais divergências atuais: ${resumoErrosInterface}
-
-        Instruções da resposta:
-        1. Qualifique a taxa de liberação contra a de expedição (Entradas x Saídas).
-        2. Alerte sobre os riscos na fila de backlog atual.
-        3. Dê uma diretriz estratégica focada em resolver as divergências de interface sistêmica.
-        4. Responda de forma profissional e analítica, sem criar tabelas. Apenas texto em prosa.
-      `;
-
-      // 3. Chamada da API usando a versão garantida de funcionar
       const response = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            contents: [{ parts: [{ text: promptContexto }] }],
-            generationConfig: {
-              temperature: 0.3 // Deixa a IA mais analítica e menos fantasiosa
-            }
+            contents: [{ parts: [{ text: userQuery }] }],
           }),
         }
       );
       
-      // 4. Tratamento robusto e explícito de erros
-      if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error?.message || `Status HTTP: ${response.status}`);
+      const result = await response.json();
+      
+      if (result.error) {
+        throw new Error(result.error.message);
       }
 
-      const result = await response.json();
       const rawText = result.candidates?.[0]?.content?.parts?.[0]?.text || "";
 
-      // Limpeza de marcações (Markdown)
-      const cleanedText = rawText.replace(/[*#]/g, "").trim(); 
-      setAiAnalysis(cleanedText);
-
+      const cleanedText = rawText
+        .replace(/[#*`>-]/g, "") 
+        .replace(/---+/g, "") 
+        .replace(/\n{3,}/g, "\n\n"); 
+        
+      setAiAnalysis(cleanedText.trim());
     } catch (err) {
-      console.error("Falha no Motor de IA:", err);
-      setAiError(err.message || "Erro desconhecido ao conectar com a IA.");
+      console.error(err);
+      setAiError("Erro na análise.");
     } finally {
       setIsAnalyzing(false);
     }
@@ -982,7 +997,7 @@ const App = () => {
     if (!backlogAnalysis || backlogAnalysis.totalPending === 0) {
       return (
         <div className="mt-20 flex flex-col items-center justify-center text-center animate-in fade-in zoom-in duration-300">
-          <div className="w-32 h-32 bg-emerald-50 rounded-full flex items-center justify-center mb-6"><CheckCircle2 size={48} className="textemerald-500" /></div>
+          <div className="w-32 h-32 bg-emerald-50 rounded-full flex items-center justify-center mb-6"><CheckCircle2 size={48} className="text-emerald-500" /></div>
           <h2 className="text-2xl font-black text-slate-800">Fluxo Limpo!</h2>
           <p className="text-slate-400 mt-2">Nenhum pedido pendente encontrado fora dos status Expedido/Cancelado.</p>
         </div>
