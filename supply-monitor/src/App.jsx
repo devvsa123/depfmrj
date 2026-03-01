@@ -90,7 +90,7 @@ const App = () => {
     return new Date().toISOString().split('T')[0];
   });
 
-  // ⚠️ SEGURANÇA: Coloque sua chave da API aqui novamente no seu código do GitHub.
+  // ⚠️ SEGURANÇA: Coloque sua chave da API aqui novamente
   const apiKey = "AIzaSyB7-09YzTnSfZC-tYpdzPBbUbSDoWKDjX0";
 
   useEffect(() => {
@@ -107,10 +107,9 @@ const App = () => {
   }, []);
 
   // --- AUTO-CARREGAMENTO INTELIGENTE ---
-  // Roda automaticamente quando a página abre e o motor do Excel está pronto
   useEffect(() => {
     if (libLoaded && data.length === 0) {
-      performSync(false); // Sincroniza usando cache se possível
+      performSync(false);
     }
   }, [libLoaded]);
 
@@ -132,7 +131,6 @@ const App = () => {
     return !isNaN(d.getTime()) ? d.toISOString().split('T')[0] : null;
   };
 
-  // Helper para baixar apenas o SINGRA (usado no Upload manual)
   const fetchSingraOnly = async () => {
     try {
       const res = await fetch(`${SINGRA_URL}?t=${Date.now()}`);
@@ -171,21 +169,18 @@ const App = () => {
     }
   };
 
-  // --- MOTOR DE SINCRONIZAÇÃO UNIFICADO (COM CACHE) ---
   const performSync = async (forceDownload = false) => {
     if (!libLoaded) return;
     setLoading(true);
     setError("");
 
     try {
-      // 1. Pergunta para a nuvem as datas de modificação (Leve e super rápido)
       const wmsHead = await fetch(`${WMS_URL}?t=${Date.now()}`, { method: 'HEAD' }).catch(() => null);
       const singraHead = await fetch(`${SINGRA_URL}?t=${Date.now()}`, { method: 'HEAD' }).catch(() => null);
 
       const wmsMod = wmsHead ? wmsHead.headers.get('last-modified') : null;
       const singraMod = singraHead ? singraHead.headers.get('last-modified') : null;
 
-      // 2. Verifica se podemos usar o Cache Local
       if (!forceDownload) {
         const cachedData = await getFromCache('supplyData');
         if (cachedData && cachedData.wmsMod === wmsMod && cachedData.singraMod === singraMod) {
@@ -194,13 +189,10 @@ const App = () => {
           setLastSync(cachedData.lastSync);
           setFileName("Carregado Rápido (Cache)");
           setLoading(false);
-          return; // Sai da função sem gastar internet!
+          return;
         }
       }
 
-      // 3. Se chegou aqui, precisa baixar os dados novos
-      
-      // Baixa e processa WMS
       const wmsRes = await fetch(`${WMS_URL}?t=${Date.now()}`);
       if (!wmsRes.ok) throw new Error("Falha ao baixar WMS");
       const wmsBuffer = await wmsRes.arrayBuffer();
@@ -219,18 +211,14 @@ const App = () => {
         return newItem;
       });
 
-      // Baixa e processa SINGRA
       const normalizedSingra = await fetchSingraOnly();
-
       const lastSyncTime = new Date().toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
       
-      // Atualiza Tela
       setData(normalizedWms);
       setSingraData(normalizedSingra);
       setLastSync(lastSyncTime);
       setFileName("Sincronizado na Nuvem ☁️");
 
-      // 4. Salva os novos dados processados no Cache local
       await saveToCache('supplyData', {
         wmsMod, 
         singraMod,
@@ -257,7 +245,6 @@ const App = () => {
     setFileName(file.name);
     setLastSync(new Date().toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }));
 
-    // Garante que temos o SINGRA caso façamos upload manual do WMS
     const singra = await fetchSingraOnly();
     setSingraData(singra);
 
@@ -308,7 +295,6 @@ const App = () => {
     window.XLSX.writeFile(wb, `${sheetName}_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
-  // --- MOTOR DE ANÁLISE DE INTERFACE SINGRA X WMS ---
   const interfaceAnalysis = useMemo(() => {
     if (data.length === 0) return null;
 
@@ -388,7 +374,6 @@ const App = () => {
     return results;
   }, [data, singraData, interfaceStartDate, interfaceEndDate]);
 
-  // --- ANÁLISE DE HISTÓRICO E GRÁFICOS DIÁRIOS ---
   const chartData = useMemo(() => {
     if (data.length === 0) return [];
     const filteredForCharts = data.filter(item => String(item.STATUS || "").toUpperCase().trim() !== "CANCELADO");
@@ -609,83 +594,104 @@ const App = () => {
     if (chartData.length > 0) setVisibleRange({ startIndex: 0, endIndex: chartData.length - 1 });
   }, [chartData]);
 
+  // =========================================================================================
+  // NOVA FUNÇÃO DE INTELIGÊNCIA ARTIFICIAL
+  // Desenhada do zero para ler o Dashboard atual, o Backlog e as Falhas de Interface visíveis.
+  // Utiliza a URL e versão da API original que já provou funcionar na sua infraestrutura.
+  // =========================================================================================
   const analyzeWithAI = async () => {
+    if (!apiKey || apiKey.trim() === "") {
+      setAiError("⚠️ Chave da API do Google não foi encontrada no código.");
+      return;
+    }
+
     if (!chartData.length || isAnalyzing || !selectionSummary) return;
+
     setIsAnalyzing(true);
     setAiError("");
     setAiAnalysis("");
-    
-    const totalEntradasHist = chartData.reduce((a, b) => a + (b.entradas || 0), 0);
-    const totalSaidasHist = chartData.reduce((a, b) => a + (b.separacoes || 0), 0);
-    const mediaHistoricaSaidas = totalSaidasHist / chartData.length;
-    const picoHistorico = Math.max(...chartData.map(d => d.separacoes || 0));
-    const mediaLeadHistorico = chartData.reduce((a, b) => a + (b.leadTimeDaily || 0), 0) / chartData.length;
-    
-    const periodoSaidas = selectionSummary.separacoes;
-    const periodoEntradas = selectionSummary.entradas;
-    const periodoMediaDiaria = periodoSaidas / selectionSummary.numDias;
-    const periodoLead = selectionSummary.avgLeadTimePeriodo;
-    
-    const userQuery = `
-    Você é um consultor sênior de Supply Chain especializado em análise operacional.
-    Analise os dados abaixo considerando TODO o histórico disponível e o período selecionado.
-    DADOS HISTÓRICOS:
-    - Total histórico de entradas: ${totalEntradasHist}
-    - Total histórico de saídas: ${totalSaidasHist}
-    - Média histórica diária de expedição: ${mediaHistoricaSaidas.toFixed(2)}
-    - Pico histórico diário de expedição: ${picoHistorico}
-    - Lead Time médio histórico: ${mediaLeadHistorico.toFixed(2)} dias
-    DADOS DO PERÍODO SELECIONADO:
-    - Entradas no período: ${periodoEntradas}
-    - Saídas no período: ${periodoSaidas}
-    - Média diária de expedição no período: ${periodoMediaDiaria.toFixed(2)}
-    - Lead Time médio no período: ${periodoLead} dias
-    QUERO QUE VOCÊ:
-    1. Compare o desempenho atual com a média histórica.
-    2. Informe se a taxa de expedição está acima, dentro ou abaixo da média.
-    3. Avalie se estamos próximos de um pico histórico.
-    4. Identifique possível sazonalidade.
-    5. Avalie tendência (crescimento, estabilidade ou queda).
-    6. Diga se existe risco de formação de backlog.
-    7. Forneça uma previsão qualitativa de demanda com base na sazonalidade observada.
-    8. Escreva em formato executivo, direto, sem tabelas, sem fórmulas matemáticas.
-    9. Finalize com um parecer estratégico claro.
-    `;
-    
-    if (!apiKey || apiKey.trim() === "") {
-        setAiError("⚠️ Chave da API do Google não encontrada. Insira sua apiKey no código.");
-        setIsAnalyzing(false);
-        return;
-    }
 
     try {
-      // ----------------------------------------------------------------------------------
-      // CORREÇÃO APLICADA AQUI: Voltamos para a forma clássica e estável de chamar a API
-      // usando v1 e o modelo gemini-1.5-flash. Isso garante compatibilidade com sua chave.
-      // ----------------------------------------------------------------------------------
+      // 1. Coleta e formatação limpa das métricas que a IA precisa saber
+      const dataInicial = chartData[visibleRange.startIndex]?.date || "N/A";
+      const dataFinal = chartData[visibleRange.endIndex]?.date || "N/A";
+      const totalPendentes = backlogAnalysis?.totalPending || 0;
+      const diasPedidoMaisAntigo = backlogAnalysis?.oldestOrder?.daysOpen || 0;
+      const statusMaisAntigo = backlogAnalysis?.oldestOrder?.STATUS || "N/A";
+      const taxaSLA = slaAnalysis?.taxaNoPrazo || 0;
+
+      // Coletando o novo "Resumo das Falhas de Interface" que você destacou
+      let resumoErrosInterface = "Nenhuma falha crítica detectada.";
+      if (interfaceAnalysis && interfaceAnalysis.falhasInterface.length > 0) {
+        const contagemErros = interfaceAnalysis.falhasInterface.reduce((acc, item) => {
+          const chave = `WMS [${item.STATUS || 'Vazio'}] x SINGRA [${item.singraStatus || 'Vazio'}]`;
+          acc[chave] = (acc[chave] || 0) + 1;
+          return acc;
+        }, {});
+        
+        // Pega as 5 maiores falhas para não estourar o limite de tokens da IA
+        resumoErrosInterface = Object.entries(contagemErros)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 5)
+          .map(erro => `${erro[1]} casos de ${erro[0]}`)
+          .join(" | ");
+      }
+
+      // 2. Construção do Prompt Focado
+      const promptContexto = `
+        Aja como um Diretor de Logística analisando um dashboard de Supply Chain. 
+        Analise os dados abaixo e forneça um resumo executivo direto ao ponto (máximo de 2 parágrafos curtos).
+
+        [DADOS DO PERÍODO SELECIONADO: ${dataInicial} a ${dataFinal}]
+        - Pedidos Entrantes: ${selectionSummary.entradas}
+        - Pedidos Expedidos: ${selectionSummary.separacoes}
+        - Tempo Médio de Atendimento: ${selectionSummary.avgLeadTimePeriodo} dias
+        - SLA (Entregas no prazo definido): ${taxaSLA}%
+
+        [CENÁRIO DA FILA HOJE (BACKLOG)]
+        - Volume Total Parado: ${totalPendentes} pedidos
+        - Gargalo Máximo: O pedido mais antigo está há ${diasPedidoMaisAntigo} dias parado no status ${statusMaisAntigo}.
+        
+        [INTEGRAÇÃO SISTÊMICA WMS x SINGRA]
+        - Principais divergências atuais: ${resumoErrosInterface}
+
+        Instruções da resposta:
+        1. Qualifique a taxa de liberação contra a de expedição (Entradas x Saídas).
+        2. Alerte sobre os riscos na fila de backlog atual.
+        3. Dê uma diretriz estratégica focada em resolver as divergências de interface sistêmica.
+        4. Responda de forma profissional e analítica, sem criar tabelas. Apenas texto em prosa.
+      `;
+
+      // 3. Chamada da API usando a versão garantida de funcionar
       const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            contents: [{ parts: [{ text: userQuery }] }],
+            contents: [{ parts: [{ text: promptContexto }] }],
+            generationConfig: {
+              temperature: 0.3 // Deixa a IA mais analítica e menos fantasiosa
+            }
           }),
         }
       );
       
-      const result = await response.json();
-      
-      if (result.error) {
-          throw new Error(`${result.error.message}`);
+      // 4. Tratamento robusto e explícito de erros
+      if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error?.message || `Status HTTP: ${response.status}`);
       }
 
+      const result = await response.json();
       const rawText = result.candidates?.[0]?.content?.parts?.[0]?.text || "";
 
-      const cleanedText = rawText.replace(/[#*`>-]/g, "").replace(/---+/g, "").replace(/\n{3,}/g, "\n\n"); 
-      setAiAnalysis(cleanedText.trim());
+      // Limpeza de marcações (Markdown)
+      const cleanedText = rawText.replace(/[*#]/g, "").trim(); 
+      setAiAnalysis(cleanedText);
+
     } catch (err) {
-      console.error("Erro completo na IA:", err);
+      console.error("Falha no Motor de IA:", err);
       setAiError(err.message || "Erro desconhecido ao conectar com a IA.");
     } finally {
       setIsAnalyzing(false);
