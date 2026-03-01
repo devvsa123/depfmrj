@@ -42,7 +42,7 @@ const App = () => {
     return new Date().toISOString().split('T')[0];
   });
 
-  const apiKey = "";
+  const apiKey = "AIzaSyB7-09YzTnSfZC-tYpdzPBbUbSDoWKDjX0";
 
   useEffect(() => {
     if (window.XLSX) {
@@ -399,7 +399,7 @@ const App = () => {
 
     let expedidosTotal = 0;
     let expedidosNoPrazo = 0;
-    const metaSlaDias = 2; // Meta de expedição (ex: 2 dias)
+    const metaSlaDias = 20; // Meta de expedição (ex: 15 dias)
 
     data.forEach(item => {
       const sepDateStr = safeGetISODate(item.DATA_SEPARACAO);
