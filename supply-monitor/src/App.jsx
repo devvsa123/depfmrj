@@ -23,6 +23,7 @@ const App = () => {
   const [lastSync, setLastSync] = useState(null);
   const [activeTab, setActiveTab] = useState("dashboard");
   const [activeInterfaceView, setActiveInterfaceView] = useState("falhasInterface");
+  const [selectedErrorFilter, setSelectedErrorFilter] = useState(null); // NOVO: Estado para o filtro da caixa de erro
 
   const [selectedBucket, setSelectedBucket] = useState(null);
   const [selectedPiSegment, setSelectedPiSegment] = useState(null); 
@@ -41,7 +42,7 @@ const App = () => {
     return new Date().toISOString().split('T')[0];
   });
 
-  const apiKey = "AIzaSyB7-09YzTnSfZC-tYpdzPBbUbSDoWKDjX0";
+  const apiKey = "";
 
   useEffect(() => {
     if (window.XLSX) {
@@ -294,8 +295,9 @@ const App = () => {
 
         let isCasado = false;
         
-        if (sStatus === "EM ATENDIMENTO" && (wStatus === "EM PLANEJAMENTO" || wStatus === "RESERVADO")) isCasado = true;
-        else if (sStatus === "EM SEPARACAO" && (wStatus === "EM SEPARACAO" || wStatus === "EM CONFERENCIA" || wStatus === "SEPARADO")) isCasado = true;
+        // Regras ampliadas para capturar variações de texto (com ou sem 'EM')
+        if (sStatus === "EM ATENDIMENTO" && (wStatus === "EM PLANEJAMENTO" || wStatus === "PLANEJAMENTO" || wStatus === "RESERVADO")) isCasado = true;
+        else if (sStatus === "EM SEPARACAO" && (wStatus === "EM SEPARACAO" || wStatus === "SEPARACAO" || wStatus === "EM CONFERENCIA" || wStatus === "CONFERENCIA" || wStatus === "SEPARADO")) isCasado = true;
         else if (sStatus === "EM EXPEDICAO" && wStatus === "CONFERIDO") isCasado = true;
         else if (sStatus === "EM TRANSITO" && (wStatus === "CONFERIDO" || wStatus === "EXPEDIDO")) isCasado = true;
 
@@ -529,6 +531,79 @@ const App = () => {
     if (chartData.length > 0) setVisibleRange({ startIndex: 0, endIndex: chartData.length - 1 });
   }, [chartData]);
 
+  // --- FUNÇÃO DE ANÁLISE DE IA RESTAURADA ---
+  const analyzeWithAI = async () => {
+    if (!chartData.length || isAnalyzing || !selectionSummary) return;
+    setIsAnalyzing(true);
+    setAiError("");
+    setAiAnalysis("");
+    
+    const totalEntradasHist = chartData.reduce((a, b) => a + (b.entradas || 0), 0);
+    const totalSaidasHist = chartData.reduce((a, b) => a + (b.separacoes || 0), 0);
+    const mediaHistoricaSaidas = totalSaidasHist / chartData.length;
+    const picoHistorico = Math.max(...chartData.map(d => d.separacoes || 0));
+    const mediaLeadHistorico = chartData.reduce((a, b) => a + (b.leadTimeDaily || 0), 0) / chartData.length;
+    
+    const periodoSaidas = selectionSummary.separacoes;
+    const periodoEntradas = selectionSummary.entradas;
+    const periodoMediaDiaria = periodoSaidas / selectionSummary.numDias;
+    const periodoLead = selectionSummary.avgLeadTimePeriodo;
+    
+    const userQuery = `
+    Você é um consultor sênior de Supply Chain especializado em análise operacional.
+    Analise os dados abaixo considerando TODO o histórico disponível e o período selecionado.
+    DADOS HISTÓRICOS:
+    - Total histórico de entradas: ${totalEntradasHist}
+    - Total histórico de saídas: ${totalSaidasHist}
+    - Média histórica diária de expedição: ${mediaHistoricaSaidas.toFixed(2)}
+    - Pico histórico diário de expedição: ${picoHistorico}
+    - Lead Time médio histórico: ${mediaLeadHistorico.toFixed(2)} dias
+    DADOS DO PERÍODO SELECIONADO:
+    - Entradas no período: ${periodoEntradas}
+    - Saídas no período: ${periodoSaidas}
+    - Média diária de expedição no período: ${periodoMediaDiaria.toFixed(2)}
+    - Lead Time médio no período: ${periodoLead} dias
+    QUERO QUE VOCÊ:
+    1. Compare o desempenho atual com a média histórica.
+    2. Informe se a taxa de expedição está acima, dentro ou abaixo da média.
+    3. Avalie se estamos próximos de um pico histórico.
+    4. Identifique possível sazonalidade.
+    5. Avalie tendência (crescimento, estabilidade ou queda).
+    6. Diga se existe risco de formação de backlog.
+    7. Forneça uma previsão qualitativa de demanda com base na sazonalidade observada.
+    8. Escreva em formato executivo, direto, sem tabelas, sem fórmulas matemáticas.
+    9. Finalize com um parecer estratégico claro.
+    Não use tabelas.
+    Não repita os números em formato de cálculo.
+    Seja analítico e estratégico.
+    `;
+    
+    try {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: userQuery }] }],
+          }),
+        }
+      );
+      const result = await response.json();
+      const rawText = result.candidates?.[0]?.content?.parts?.[0]?.text || "";
+
+      const cleanedText = rawText
+        .replace(/[#*`>-]/g, "") 
+        .replace(/---+/g, "") 
+        .replace(/\n{3,}/g, "\n\n"); 
+      setAiAnalysis(cleanedText.trim());
+    } catch (err) {
+      setAiError("Erro na análise.");
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
   // --- RENDERS DE MODAIS ---
   const renderPiDetailsModal = () => {
     if (!selectedPiSegment) return null;
@@ -643,7 +718,7 @@ const App = () => {
       <div className="space-y-6 animate-in fade-in zoom-in duration-300">
         {renderPiDetailsModal()}
         
-        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-7 gap-4">
           <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
             <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-1">Entradas (Corte)</p>
             <p className="text-2xl font-black text-slate-800">{selectionSummary?.entradas.toLocaleString()}</p>
@@ -675,7 +750,23 @@ const App = () => {
             <p className="text-2xl font-black text-slate-800">{estimativaZerarFila} <span className="text-xs text-slate-400 font-bold">dias</span></p>
             <div className="mt-1 text-[10px] text-orange-600 font-bold flex items-center gap-1"><RefreshCw size={12} /> Previsão de fila</div>
           </div>
+          <button onClick={analyzeWithAI} disabled={isAnalyzing} className="group p-6 rounded-3xl shadow-lg transition-all flex flex-col justify-center items-start bg-indigo-600 text-white hover:bg-indigo-700 overflow-hidden">
+            <p className="text-[10px] font-bold uppercase tracking-widest mb-1 text-indigo-200 italic">Consultoria AI</p>
+            <div className="flex items-center gap-2 w-full justify-between relative z-10">
+              <span className="text-lg font-bold">Analisar ✨</span>
+              {isAnalyzing ? <Loader2 size={20} className="animate-spin" /> : <Sparkles size={20} />}
+            </div>
+          </button>
         </div>
+
+        {aiAnalysis && (
+          <div className="p-1 bg-gradient-to-br from-indigo-100 to-purple-100 rounded-[34px] shadow-xl mt-2">
+            <div className="p-8 bg-white rounded-[32px]">
+              <div className="flex items-center gap-3 mb-4"><Target className="text-indigo-600" /><h3 className="text-lg font-black">Diagnóstico Operacional</h3></div>
+              <div className="text-slate-700 text-sm leading-relaxed whitespace-pre-wrap">{aiAnalysis}</div>
+            </div>
+          </div>
+        )}
 
         <div className="bg-white p-6 rounded-[30px] shadow-sm border border-slate-200 mb-6 mt-4">
           <div className="flex items-center justify-between mb-4">
@@ -893,6 +984,11 @@ const App = () => {
     };
 
     const currentList = views[activeInterfaceView].data;
+    
+    // NOVO: Cria uma lista exibida que é filtrada se estivermos na visão de Falhas e houver um card clicado
+    const displayedList = activeInterfaceView === 'falhasInterface' && selectedErrorFilter
+        ? currentList.filter(item => `${item.STATUS || 'N/A'}-${item.singraStatus || 'N/A'}` === selectedErrorFilter)
+        : currentList;
 
     return (
       <div className="space-y-6 animate-in fade-in zoom-in duration-300">
@@ -920,22 +1016,22 @@ const App = () => {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <button onClick={() => setActiveInterfaceView('aguardandoRetirada')} className={`text-left p-6 rounded-3xl shadow-sm border-2 transition-all ${activeInterfaceView === 'aguardandoRetirada' ? 'border-blue-400 bg-white' : 'border-transparent bg-blue-50 opacity-70 hover:opacity-100'}`}>
+          <button onClick={() => { setActiveInterfaceView('aguardandoRetirada'); setSelectedErrorFilter(null); }} className={`text-left p-6 rounded-3xl shadow-sm border-2 transition-all ${activeInterfaceView === 'aguardandoRetirada' ? 'border-blue-400 bg-white' : 'border-transparent bg-blue-50 opacity-70 hover:opacity-100'}`}>
             <p className="text-blue-500 text-[10px] font-black uppercase tracking-widest mb-1 line-clamp-1">Aguardando Retirada</p>
             <p className="text-3xl font-black text-slate-800">{interfaceAnalysis.aguardandoRetirada.length}</p>
             <p className="text-xs text-slate-500 mt-2 font-medium">Singra (Trânsito) + WMS (Conferido)</p>
           </button>
-          <button onClick={() => setActiveInterfaceView('aguardandoArrecadacao')} className={`text-left p-6 rounded-3xl shadow-sm border-2 transition-all ${activeInterfaceView === 'aguardandoArrecadacao' ? 'border-orange-400 bg-white' : 'border-transparent bg-orange-50 opacity-70 hover:opacity-100'}`}>
+          <button onClick={() => { setActiveInterfaceView('aguardandoArrecadacao'); setSelectedErrorFilter(null); }} className={`text-left p-6 rounded-3xl shadow-sm border-2 transition-all ${activeInterfaceView === 'aguardandoArrecadacao' ? 'border-orange-400 bg-white' : 'border-transparent bg-orange-50 opacity-70 hover:opacity-100'}`}>
             <p className="text-orange-500 text-[10px] font-black uppercase tracking-widest mb-1 line-clamp-1">Aguar. Arrecadação</p>
             <p className="text-3xl font-black text-slate-800">{interfaceAnalysis.aguardandoArrecadacao.length}</p>
             <p className="text-xs text-slate-500 mt-2 font-medium">Singra (Trânsito) + WMS (Expedido)</p>
           </button>
-          <button onClick={() => setActiveInterfaceView('arrecadadoOms')} className={`text-left p-6 rounded-3xl shadow-sm border-2 transition-all ${activeInterfaceView === 'arrecadadoOms' ? 'border-emerald-400 bg-white' : 'border-transparent bg-emerald-50 opacity-70 hover:opacity-100'}`}>
+          <button onClick={() => { setActiveInterfaceView('arrecadadoOms'); setSelectedErrorFilter(null); }} className={`text-left p-6 rounded-3xl shadow-sm border-2 transition-all ${activeInterfaceView === 'arrecadadoOms' ? 'border-emerald-400 bg-white' : 'border-transparent bg-emerald-50 opacity-70 hover:opacity-100'}`}>
             <p className="text-emerald-500 text-[10px] font-black uppercase tracking-widest mb-1 line-clamp-1">Arrecadado OMS</p>
             <p className="text-3xl font-black text-slate-800">{interfaceAnalysis.arrecadadoOms.length}</p>
             <p className="text-xs text-emerald-600 mt-2 font-bold bg-emerald-100 inline-block px-2 py-0.5 rounded-full">No período filtrado</p>
           </button>
-          <button onClick={() => setActiveInterfaceView('falhasInterface')} className={`text-left p-6 rounded-3xl shadow-sm border-2 transition-all ${activeInterfaceView === 'falhasInterface' ? 'border-red-400 bg-white' : 'border-transparent bg-red-50 opacity-70 hover:opacity-100'}`}>
+          <button onClick={() => { setActiveInterfaceView('falhasInterface'); setSelectedErrorFilter(null); }} className={`text-left p-6 rounded-3xl shadow-sm border-2 transition-all ${activeInterfaceView === 'falhasInterface' ? 'border-red-400 bg-white' : 'border-transparent bg-red-50 opacity-70 hover:opacity-100'}`}>
             <p className="text-red-500 text-[10px] font-black uppercase tracking-widest mb-1 line-clamp-1">Falha de Interface</p>
             <p className="text-3xl font-black text-red-600">{interfaceAnalysis.falhasInterface.length}</p>
             <p className="text-xs text-slate-500 mt-2 font-medium text-red-400">Status não correspondem</p>
@@ -948,29 +1044,33 @@ const App = () => {
               <h3 className={`text-xl font-black flex items-center gap-2 ${views[activeInterfaceView].color}`}>
                 <ArrowRightLeft size={24} /> {views[activeInterfaceView].title}
               </h3>
-              <p className="text-sm text-slate-500 font-medium mt-1">Mostrando {currentList.length} pedidos encontrados.</p>
+              <p className="text-sm text-slate-500 font-medium mt-1">Mostrando {displayedList.length} pedidos encontrados.</p>
             </div>
-            <button onClick={() => handleDownloadExcel(currentList, `Relatorio_Interface_${activeInterfaceView}`)} disabled={currentList.length === 0} className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-600 rounded-xl text-sm font-bold hover:bg-indigo-100 disabled:opacity-50">
+            <button onClick={() => handleDownloadExcel(displayedList, `Relatorio_Interface_${activeInterfaceView}`)} disabled={displayedList.length === 0} className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-600 rounded-xl text-sm font-bold hover:bg-indigo-100 disabled:opacity-50">
               <Download size={16} /> Exportar para Excel
             </button>
           </div>
 
           {activeInterfaceView === 'falhasInterface' && currentList.length > 0 && (
             <div className="mb-6 bg-slate-50 p-4 rounded-2xl border border-slate-100">
-              <h4 className="text-xs font-black text-slate-500 uppercase tracking-wider mb-3">Resumo das Falhas de Interface</h4>
+              <h4 className="text-xs font-black text-slate-500 uppercase tracking-wider mb-3">Resumo das Falhas de Interface (Clique para filtrar)</h4>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                 {Object.values(currentList.reduce((acc, item) => {
                     const key = `${item.STATUS || 'N/A'}-${item.singraStatus || 'N/A'}`;
-                    if (!acc[key]) acc[key] = { wms: item.STATUS || 'N/A', singra: item.singraStatus || 'N/A', count: 0 };
+                    if (!acc[key]) acc[key] = { key, wms: item.STATUS || 'N/A', singra: item.singraStatus || 'N/A', count: 0 };
                     acc[key].count++;
                     return acc;
                 }, {})).sort((a,b) => b.count - a.count).map((sum, idx) => (
-                    <div key={idx} className="bg-white border border-red-100 p-3 rounded-xl flex items-center justify-between shadow-sm">
+                    <div 
+                      key={idx} 
+                      onClick={() => setSelectedErrorFilter(sum.key === selectedErrorFilter ? null : sum.key)}
+                      className={`p-3 rounded-xl flex items-center justify-between shadow-sm cursor-pointer transition-all ${selectedErrorFilter === sum.key ? 'bg-red-50 border-2 border-red-500 scale-[1.02]' : 'bg-white border border-red-100 hover:border-red-300'}`}
+                    >
                         <div>
                             <p className="text-[9px] font-bold text-slate-400 uppercase">WMS: <span className="text-indigo-600 font-black">{sum.wms}</span></p>
                             <p className="text-[9px] font-bold text-slate-400 uppercase">SINGRA: <span className="text-slate-800 font-black">{sum.singra}</span></p>
                         </div>
-                        <div className="text-base font-black text-red-600 bg-red-50 px-2 py-1 rounded-lg">
+                        <div className={`text-base font-black px-2 py-1 rounded-lg ${selectedErrorFilter === sum.key ? 'text-white bg-red-500' : 'text-red-600 bg-red-50'}`}>
                             {sum.count}
                         </div>
                     </div>
@@ -979,28 +1079,43 @@ const App = () => {
             </div>
           )}
 
-          <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
-            <table className="w-full text-sm text-left text-slate-600">
-              <thead className="text-xs text-slate-400 uppercase bg-slate-50 sticky top-0 z-10 shadow-sm">
-                <tr><th className="px-6 py-4 rounded-tl-xl">Pedido / RM</th><th className="px-6 py-4">PI</th><th className="px-6 py-4">Status WMS</th><th className="px-6 py-4">Status SINGRA</th><th className="px-6 py-4 rounded-tr-xl">Data Entrada</th></tr>
-              </thead>
-              <tbody>
-                {currentList.length > 0 ? (
-                  currentList.map((order, idx) => (
-                    <tr key={idx} className="border-b border-slate-50 hover:bg-slate-50">
-                      <td className="px-6 py-4 font-bold text-slate-800 font-mono">{order.PEDIDO || "S/N"}</td>
-                      <td className="px-6 py-4 font-medium text-slate-500">{order.PI || "-"}</td>
-                      <td className="px-6 py-4"><span className="bg-indigo-50 text-indigo-700 px-2 py-1 rounded-md text-xs font-bold border border-indigo-100">{order.STATUS || "N/A"}</span></td>
-                      <td className="px-6 py-4"><span className={`px-2 py-1 rounded-md text-xs font-bold border ${order.singraStatus === 'NÃO CONSTA NO SINGRA' ? 'bg-slate-100 text-slate-500 border-slate-200' : 'bg-slate-800 text-white border-slate-700'}`}>{order.singraStatus || "N/A"}</span></td>
-                      <td className="px-6 py-4 font-medium">{order.DATA_ENTRADA ? safeGetISODate(order.DATA_ENTRADA).split('-').reverse().join('/') : '-'}</td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr><td colSpan="5" className="px-6 py-10 text-center text-slate-400 font-medium">Nenhum pedido encontrado nesta classificação.</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+          {/* Tabela - Mostra se NÃO for Falha de Interface OU se for Falha de Interface e tiver um filtro selecionado */}
+          {(activeInterfaceView !== 'falhasInterface' || selectedErrorFilter) && (
+            <>
+              {activeInterfaceView === 'falhasInterface' && selectedErrorFilter && (
+                <div className="mb-4 flex flex-col sm:flex-row sm:items-center justify-between bg-red-50/50 p-4 rounded-xl border border-red-100 animate-in fade-in slide-in-from-top-4">
+                  <span className="text-sm font-bold text-red-700 flex items-center gap-2 mb-2 sm:mb-0">
+                    <AlertTriangle size={16} /> Exibindo detalhamento para a falha selecionada ({displayedList.length} pedidos)
+                  </span>
+                  <button onClick={() => setSelectedErrorFilter(null)} className="text-xs font-bold text-slate-600 hover:text-slate-900 bg-white px-4 py-2 rounded-lg border border-slate-200 shadow-sm transition-colors flex items-center gap-2 w-fit">
+                    <X size={14}/> Fechar Tabela
+                  </button>
+                </div>
+              )}
+              <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
+                <table className="w-full text-sm text-left text-slate-600 animate-in fade-in duration-300">
+                  <thead className="text-xs text-slate-400 uppercase bg-slate-50 sticky top-0 z-10 shadow-sm">
+                    <tr><th className="px-6 py-4 rounded-tl-xl">Pedido / RM</th><th className="px-6 py-4">PI</th><th className="px-6 py-4">Status WMS</th><th className="px-6 py-4">Status SINGRA</th><th className="px-6 py-4 rounded-tr-xl">Data Entrada</th></tr>
+                  </thead>
+                  <tbody>
+                    {displayedList.length > 0 ? (
+                      displayedList.map((order, idx) => (
+                        <tr key={idx} className="border-b border-slate-50 hover:bg-slate-50">
+                          <td className="px-6 py-4 font-bold text-slate-800 font-mono">{order.PEDIDO || "S/N"}</td>
+                          <td className="px-6 py-4 font-medium text-slate-500">{order.PI || "-"}</td>
+                          <td className="px-6 py-4"><span className="bg-indigo-50 text-indigo-700 px-2 py-1 rounded-md text-xs font-bold border border-indigo-100">{order.STATUS || "N/A"}</span></td>
+                          <td className="px-6 py-4"><span className={`px-2 py-1 rounded-md text-xs font-bold border ${order.singraStatus === 'NÃO CONSTA NO SINGRA' ? 'bg-slate-100 text-slate-500 border-slate-200' : 'bg-slate-800 text-white border-slate-700'}`}>{order.singraStatus || "N/A"}</span></td>
+                          <td className="px-6 py-4 font-medium">{order.DATA_ENTRADA ? safeGetISODate(order.DATA_ENTRADA).split('-').reverse().join('/') : '-'}</td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr><td colSpan="5" className="px-6 py-10 text-center text-slate-400 font-medium">Nenhum pedido encontrado nesta classificação.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
         </div>
       </div>
     );
