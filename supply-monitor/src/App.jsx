@@ -11,6 +11,54 @@ import {
 } from 'lucide-react';
 
 const XLSX_SCRIPT_URL = "https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js";
+const WMS_URL = "https://spxj2yln4kauap03.public.blob.vercel-storage.com/planilha_estoque.xls";
+const SINGRA_URL = "https://spxj2yln4kauap03.public.blob.vercel-storage.com/planilha_rms_unificada.csv";
+
+// --- UTILITÁRIOS DE CACHE (IndexedDB) PARA ALTA PERFORMANCE ---
+const initDB = () => {
+  return new Promise((resolve, reject) => {
+    const request = window.indexedDB.open('SupplyMonitorDB', 1);
+    request.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains('cacheStore')) {
+        db.createObjectStore('cacheStore');
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+};
+
+const saveToCache = async (key, data) => {
+  try {
+    const db = await initDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('cacheStore', 'readwrite');
+      const store = tx.objectStore('cacheStore');
+      store.put(data, key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch (err) {
+    console.warn("Falha ao salvar no cache local:", err);
+  }
+};
+
+const getFromCache = async (key) => {
+  try {
+    const db = await initDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('cacheStore', 'readonly');
+      const store = tx.objectStore('cacheStore');
+      const request = store.get(key);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  } catch (err) {
+    console.warn("Falha ao ler cache local:", err);
+    return null;
+  }
+};
 
 const App = () => {
   const [data, setData] = useState([]);
@@ -23,7 +71,7 @@ const App = () => {
   const [lastSync, setLastSync] = useState(null);
   const [activeTab, setActiveTab] = useState("dashboard");
   const [activeInterfaceView, setActiveInterfaceView] = useState("falhasInterface");
-  const [selectedErrorFilter, setSelectedErrorFilter] = useState(null); // NOVO: Estado para o filtro da caixa de erro
+  const [selectedErrorFilter, setSelectedErrorFilter] = useState(null); 
 
   const [selectedBucket, setSelectedBucket] = useState(null);
   const [selectedPiSegment, setSelectedPiSegment] = useState(null); 
@@ -57,6 +105,14 @@ const App = () => {
     document.head.appendChild(script);
   }, []);
 
+  // --- AUTO-CARREGAMENTO INTELIGENTE ---
+  // Roda automaticamente quando a página abre e o motor do Excel está pronto
+  useEffect(() => {
+    if (libLoaded && data.length === 0) {
+      performSync(false); // Sincroniza usando cache se possível
+    }
+  }, [libLoaded]);
+
   const safeGetISODate = (val) => {
     if (!val) return null;
     if (val instanceof Date) return val.toISOString().split('T')[0];
@@ -75,17 +131,16 @@ const App = () => {
     return !isNaN(d.getTime()) ? d.toISOString().split('T')[0] : null;
   };
 
-  const fetchSingraData = async () => {
+  // Helper para baixar apenas o SINGRA (usado no Upload manual)
+  const fetchSingraOnly = async () => {
     try {
-      const res = await fetch(`https://spxj2yln4kauap03.public.blob.vercel-storage.com/planilha_rms_unificada.csv?t=${new Date().getTime()}`);
-      if (!res.ok) return;
-      
+      const res = await fetch(`${SINGRA_URL}?t=${Date.now()}`);
+      if (!res.ok) return [];
       const text = await res.text();
       let json = [];
       
       if (text.includes(';') && !text.startsWith('PK')) {
         const lines = text.split('\n');
-        // REMOVE aspas simples e duplas no cabeçalho
         const headers = lines[0].split(';').map(h => h.replace(/['"]/g, '').trim());
         json = lines.slice(1).filter(l => l.trim()).map(line => {
              const values = line.split(';').map(v => v.replace(/['"]/g, '').trim());
@@ -100,19 +155,94 @@ const App = () => {
         json = window.XLSX.utils.sheet_to_json(ws);
       }
 
-      const normalizedSingra = json.map(item => {
+      return json.map(item => {
         const newItem = {};
         Object.keys(item).forEach(key => {
-          // Garante que qualquer aspa sobrevivente seja morta aqui
           const cleanKeyRaw = key.replace(/['"]/g, '');
           const normalizedKey = cleanKeyRaw.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
           newItem[normalizedKey] = item[key];
         });
         return newItem;
       });
-      setSingraData(normalizedSingra);
     } catch (err) {
-      console.error("Aviso: Não foi possível carregar a planilha do SINGRA.", err);
+      console.error("Erro ao puxar Singra avulso", err);
+      return [];
+    }
+  };
+
+  // --- MOTOR DE SINCRONIZAÇÃO UNIFICADO (COM CACHE) ---
+  const performSync = async (forceDownload = false) => {
+    if (!libLoaded) return;
+    setLoading(true);
+    setError("");
+
+    try {
+      // 1. Pergunta para a nuvem as datas de modificação (Leve e super rápido)
+      const wmsHead = await fetch(`${WMS_URL}?t=${Date.now()}`, { method: 'HEAD' }).catch(() => null);
+      const singraHead = await fetch(`${SINGRA_URL}?t=${Date.now()}`, { method: 'HEAD' }).catch(() => null);
+
+      const wmsMod = wmsHead ? wmsHead.headers.get('last-modified') : null;
+      const singraMod = singraHead ? singraHead.headers.get('last-modified') : null;
+
+      // 2. Verifica se podemos usar o Cache Local
+      if (!forceDownload) {
+        const cachedData = await getFromCache('supplyData');
+        if (cachedData && cachedData.wmsMod === wmsMod && cachedData.singraMod === singraMod) {
+          setData(cachedData.wmsData);
+          setSingraData(cachedData.singraData);
+          setLastSync(cachedData.lastSync);
+          setFileName("Carregado Rápido (Cache)");
+          setLoading(false);
+          return; // Sai da função sem gastar internet!
+        }
+      }
+
+      // 3. Se chegou aqui, precisa baixar os dados novos
+      
+      // Baixa e processa WMS
+      const wmsRes = await fetch(`${WMS_URL}?t=${Date.now()}`);
+      if (!wmsRes.ok) throw new Error("Falha ao baixar WMS");
+      const wmsBuffer = await wmsRes.arrayBuffer();
+      const wmsWb = window.XLSX.read(wmsBuffer, { type: 'array', cellDates: true });
+      const wmsJson = window.XLSX.utils.sheet_to_json(wmsWb.Sheets[wmsWb.SheetNames[0]]);
+      
+      if (wmsJson.length === 0) throw new Error("A planilha da nuvem está vazia.");
+
+      const normalizedWms = wmsJson.map(item => {
+        const newItem = {};
+        Object.keys(item).forEach(key => {
+          const cleanKeyRaw = key.replace(/['"]/g, '');
+          const normalizedKey = cleanKeyRaw.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+          newItem[normalizedKey] = item[key];
+        });
+        return newItem;
+      });
+
+      // Baixa e processa SINGRA
+      const normalizedSingra = await fetchSingraOnly();
+
+      const lastSyncTime = new Date().toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+      
+      // Atualiza Tela
+      setData(normalizedWms);
+      setSingraData(normalizedSingra);
+      setLastSync(lastSyncTime);
+      setFileName("Sincronizado na Nuvem ☁️");
+
+      // 4. Salva os novos dados processados no Cache local
+      await saveToCache('supplyData', {
+        wmsMod, 
+        singraMod,
+        wmsData: normalizedWms,
+        singraData: normalizedSingra,
+        lastSync: lastSyncTime
+      });
+
+    } catch (err) {
+      console.error(err);
+      alert("⚠️ Falha na sincronização: " + (err.message || "Erro desconhecido")); 
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -126,7 +256,9 @@ const App = () => {
     setFileName(file.name);
     setLastSync(new Date().toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }));
 
-    await fetchSingraData();
+    // Garante que temos o SINGRA caso façamos upload manual do WMS
+    const singra = await fetchSingraOnly();
+    setSingraData(singra);
 
     const reader = new FileReader();
     reader.onload = (evt) => {
@@ -158,55 +290,6 @@ const App = () => {
     reader.readAsBinaryString(file);
   };
 
-  const loadFromCloud = async () => {
-    if (!libLoaded) return;
-    setLoading(true);
-    setError("");
-    
-    try {
-      await fetchSingraData();
-
-      const urlDireta = "https://spxj2yln4kauap03.public.blob.vercel-storage.com/planilha_estoque.xls";
-      const resFile = await fetch(`${urlDireta}?t=${new Date().getTime()}`);
-      
-      if (!resFile.ok) throw new Error("Acesso negado ou planilha não encontrada.");
-      
-      const dataHeader = resFile.headers.get('last-modified');
-      if (dataHeader) {
-        const dataUpload = new Date(dataHeader);
-        setLastSync(dataUpload.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }));
-      } else {
-        setLastSync(new Date().toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }));
-      }
-      
-      const arrayBuffer = await resFile.arrayBuffer();
-      const wb = window.XLSX.read(arrayBuffer, { type: 'array', cellDates: true });
-      const wsname = wb.SheetNames[0];
-      const jsonData = window.XLSX.utils.sheet_to_json(wb.Sheets[wsname]);
-      
-      if (jsonData.length === 0) throw new Error("A planilha da nuvem está vazia.");
-
-      const normalizedData = jsonData.map(item => {
-        const newItem = {};
-        Object.keys(item).forEach(key => {
-          const cleanKeyRaw = key.replace(/['"]/g, '');
-          const normalizedKey = cleanKeyRaw.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
-          newItem[normalizedKey] = item[key];
-        });
-        return newItem;
-      });
-      
-      setData(normalizedData);
-      setFileName("Sincronização manual");
-      
-    } catch (err) {
-      console.error(err);
-      alert("⚠️ Falha na sincronização: " + (err.message || "Erro desconhecido")); 
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleDownloadExcel = (dataSet, sheetName) => {
     if (!dataSet || dataSet.length === 0) return;
     const exportData = dataSet.map(item => ({
@@ -224,16 +307,14 @@ const App = () => {
     window.XLSX.writeFile(wb, `${sheetName}_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
-  // --- MOTOR DE ANÁLISE DE INTERFACE SINGRA X WMS CORRIGIDO ---
+  // --- MOTOR DE ANÁLISE DE INTERFACE SINGRA X WMS ---
   const interfaceAnalysis = useMemo(() => {
     if (data.length === 0) return null;
 
     const singraMap = {};
     singraData.forEach(item => {
-      // Agora procuramos a coluna ID de forma segura
       const pedidoKey = item.ID || item.PEDIDO || item.RM || item.DOCUMENTO;
       if (pedidoKey) {
-        // Limpa zeros à esquerda e espaços para o match perfeito
         const safeKey = String(pedidoKey).replace(/^0+/, '').trim().toUpperCase();
         singraMap[safeKey] = item;
       }
@@ -263,14 +344,11 @@ const App = () => {
       const pedidoBusca = pedidoOriginal.replace(/^0+/, '').toUpperCase();
       
       const singraItem = singraMap[pedidoBusca];
-      
-      // CORREÇÃO: Lendo SITUACAO em vez de apenas STATUS
       const sStatusRaw = singraItem ? (singraItem.SITUACAO || singraItem.STATUS) : "";
       const sStatus = normalizeString(sStatusRaw);
 
       const processedItem = { ...wmsItem, singraStatus: sStatusRaw || "NÃO CONSTA NO SINGRA" };
 
-      // O filtro de data age apenas no "Arrecadado pela OMS" para não pesar
       if (!singraItem && wStatus === "EXPEDIDO") {
         const entryStr = safeGetISODate(wmsItem.DATA_ENTRADA);
         if (entryStr) {
@@ -295,7 +373,6 @@ const App = () => {
 
         let isCasado = false;
         
-        // Regras ampliadas para capturar variações de texto (com ou sem 'EM')
         if (sStatus === "EM ATENDIMENTO" && (wStatus === "EM PLANEJAMENTO" || wStatus === "PLANEJAMENTO" || wStatus === "RESERVADO")) isCasado = true;
         else if (sStatus === "EM SEPARACAO" && (wStatus === "EM SEPARACAO" || wStatus === "SEPARACAO" || wStatus === "EM CONFERENCIA" || wStatus === "CONFERENCIA" || wStatus === "SEPARADO")) isCasado = true;
         else if (sStatus === "EM EXPEDICAO" && wStatus === "CONFERIDO") isCasado = true;
@@ -399,7 +476,7 @@ const App = () => {
 
     let expedidosTotal = 0;
     let expedidosNoPrazo = 0;
-    const metaSlaDias = 20; // Meta de expedição (ex: 15 dias)
+    const metaSlaDias = 2;
 
     data.forEach(item => {
       const sepDateStr = safeGetISODate(item.DATA_SEPARACAO);
@@ -531,7 +608,6 @@ const App = () => {
     if (chartData.length > 0) setVisibleRange({ startIndex: 0, endIndex: chartData.length - 1 });
   }, [chartData]);
 
-  // --- FUNÇÃO DE ANÁLISE DE IA RESTAURADA ---
   const analyzeWithAI = async () => {
     if (!chartData.length || isAnalyzing || !selectionSummary) return;
     setIsAnalyzing(true);
@@ -573,9 +649,6 @@ const App = () => {
     7. Forneça uma previsão qualitativa de demanda com base na sazonalidade observada.
     8. Escreva em formato executivo, direto, sem tabelas, sem fórmulas matemáticas.
     9. Finalize com um parecer estratégico claro.
-    Não use tabelas.
-    Não repita os números em formato de cálculo.
-    Seja analítico e estratégico.
     `;
     
     try {
@@ -592,10 +665,7 @@ const App = () => {
       const result = await response.json();
       const rawText = result.candidates?.[0]?.content?.parts?.[0]?.text || "";
 
-      const cleanedText = rawText
-        .replace(/[#*`>-]/g, "") 
-        .replace(/---+/g, "") 
-        .replace(/\n{3,}/g, "\n\n"); 
+      const cleanedText = rawText.replace(/[#*`>-]/g, "").replace(/---+/g, "").replace(/\n{3,}/g, "\n\n"); 
       setAiAnalysis(cleanedText.trim());
     } catch (err) {
       setAiError("Erro na análise.");
@@ -604,7 +674,6 @@ const App = () => {
     }
   };
 
-  // --- RENDERS DE MODAIS ---
   const renderPiDetailsModal = () => {
     if (!selectedPiSegment) return null;
     const startDate = new Date(chartData[visibleRange.startIndex]?.date);
@@ -707,7 +776,6 @@ const App = () => {
     );
   };
 
-  // --- RENDERIZADORES DE TELAS ---
   const renderDashboard = () => {
     let estimativaZerarFila = "N/A";
     if (selectionSummary && selectionSummary.mediaSeparacoesPeriodo > 0 && backlogAnalysis) {
@@ -985,7 +1053,6 @@ const App = () => {
 
     const currentList = views[activeInterfaceView].data;
     
-    // NOVO: Cria uma lista exibida que é filtrada se estivermos na visão de Falhas e houver um card clicado
     const displayedList = activeInterfaceView === 'falhasInterface' && selectedErrorFilter
         ? currentList.filter(item => `${item.STATUS || 'N/A'}-${item.singraStatus || 'N/A'}` === selectedErrorFilter)
         : currentList;
@@ -993,7 +1060,6 @@ const App = () => {
     return (
       <div className="space-y-6 animate-in fade-in zoom-in duration-300">
         
-        {/* NOVO: Seletor de Datas Inteligente */}
         <div className="bg-white p-6 rounded-[32px] border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="flex-1">
             <h3 className="text-sm font-black text-slate-700 uppercase tracking-wider flex items-center gap-2 mb-1">
@@ -1079,7 +1145,6 @@ const App = () => {
             </div>
           )}
 
-          {/* Tabela - Mostra se NÃO for Falha de Interface OU se for Falha de Interface e tiver um filtro selecionado */}
           {(activeInterfaceView !== 'falhasInterface' || selectedErrorFilter) && (
             <>
               {activeInterfaceView === 'falhasInterface' && selectedErrorFilter && (
@@ -1136,7 +1201,7 @@ const App = () => {
             
             <div className="flex flex-col items-end gap-2">
               <div className="flex items-center gap-3">
-                <button onClick={loadFromCloud} disabled={loading || !libLoaded} className="cursor-pointer px-6 py-2.5 rounded-xl font-bold transition-all flex items-center gap-2 shadow-sm bg-indigo-600 border border-indigo-600 text-white hover:bg-indigo-700 text-sm disabled:opacity-50">
+                <button onClick={() => performSync(true)} disabled={loading || !libLoaded} className="cursor-pointer px-6 py-2.5 rounded-xl font-bold transition-all flex items-center gap-2 shadow-sm bg-indigo-600 border border-indigo-600 text-white hover:bg-indigo-700 text-sm disabled:opacity-50">
                   {loading ? <Loader2 size={18} className="animate-spin" /> : <RefreshCw size={18} />} Sincronizar Robôs
                 </button>
                 <label className="cursor-pointer px-6 py-2.5 rounded-xl font-bold transition-all flex items-center gap-2 shadow-sm bg-white border border-slate-200 hover:border-indigo-500 hover:text-indigo-600 text-sm disabled:opacity-50">
@@ -1144,6 +1209,12 @@ const App = () => {
                   <input type="file" className="hidden" accept=".xlsx, .xls, .csv" onChange={handleFileUpload} disabled={!libLoaded || loading} />
                 </label>
               </div>
+              {lastSync && (
+                <div className="text-[11px] text-slate-500 font-bold flex items-center gap-1.5 bg-slate-200/50 px-3 py-1.5 rounded-lg border border-slate-200 shadow-sm animate-in fade-in">
+                  <Clock size={12} className="text-indigo-500" />
+                  Última atualização: <span className="text-slate-700">{lastSync}</span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -1168,12 +1239,12 @@ const App = () => {
           activeTab === 'interface' ? renderInterfaceView() : null
         ) : (
           <div className="mt-32 flex flex-col items-center justify-center text-center">
-            <div className="w-40 h-40 bg-white rounded-[50px] shadow-2xl flex items-center justify-center mb-8 border border-slate-100">
-              <Database size={60} className="text-indigo-500 opacity-20" />
+            <div className={`w-40 h-40 bg-white rounded-[50px] shadow-2xl flex items-center justify-center mb-8 border border-slate-100 ${loading ? 'animate-pulse' : ''}`}>
+              {loading ? <Loader2 size={60} className="text-indigo-500 animate-spin" /> : <Database size={60} className="text-indigo-500 opacity-20" />}
             </div>
             <h2 className="text-2xl font-black text-slate-800 tracking-tight">Supply Monitor Integrado</h2>
             <p className="text-slate-400 text-sm max-w-sm mt-2 font-medium">
-              Clique em Sincronizar Robôs para baixar os dados do WMS e cruzá-los com o SINGRA.
+              {loading ? "Sincronizando dados com a nuvem..." : "Aguarde o carregamento ou clique em Sincronizar Robôs."}
             </p>
           </div>
         )}
