@@ -9,6 +9,7 @@ import {
   LayoutDashboard, Hourglass, AlertTriangle, ListFilter, X, Download, RefreshCw,
   Network, Database, ArrowRightLeft, Calendar
 } from 'lucide-react';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const XLSX_SCRIPT_URL = "https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js";
 const WMS_URL = "https://spxj2yln4kauap03.public.blob.vercel-storage.com/planilha_estoque.xls";
@@ -623,6 +624,13 @@ const App = () => {
     setAiAnalysis("");
     
     try {
+      // 1. Busca a chave do Vite
+      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+      if (!apiKey || apiKey.trim() === "") {
+        throw new Error("⚠️ A Chave da API (VITE_GEMINI_API_KEY) não foi encontrada nas variáveis de ambiente.");
+      }
+
+      // 2. Prepara os dados do contexto (mantive exatamente a sua lógica)
       const totalEntradasHist = chartData.reduce((acc, curr) => acc + (curr.entradas || 0), 0);
       const totalSaidasHist = chartData.reduce((acc, curr) => acc + (curr.separacoes || 0), 0);
       const mediaHistoricaSaidas = chartData.length > 0 ? (totalSaidasHist / chartData.length).toFixed(2) : 0;
@@ -687,37 +695,23 @@ const App = () => {
         5. NÃO use formatações como asteriscos, caracteres especiais, nem repita os números de forma robótica. Não use tabelas.
       `;
       
-      if (!apiKey || apiKey.trim() === "") {
-          throw new Error("⚠️ A Chave da API (apiKey) não foi configurada. Insira sua chave no código (se rodando localmente) ou nas variáveis de ambiente da Vercel.");
-      }
-
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: userQuery }] }],
-          }),
-        }
-      );
+      // ====================================================================
+      // 3. INICIALIZAÇÃO E CHAMADA DA IA (O JEITO CORRETO)
+      // ====================================================================
+      const genAI = new GoogleGenerativeAI(apiKey);
       
-      const result = await response.json();
+      // Usa o modelo recomendado atual
+      const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
       
-      if (!response.ok) {
-        throw new Error(result.error?.message || `A API recusou a conexão (Erro HTTP ${response.status})`);
-      }
-      
-      if (result.error) {
-        throw new Error(result.error.message);
-      }
-
-      const rawText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+      // Envia a requisição
+      const result = await model.generateContent(userQuery);
+      const rawText = result.response.text();
       
       if (!rawText) {
         throw new Error("A Inteligência Artificial processou os dados, mas não gerou nenhuma resposta.");
       }
 
+      // Limpeza do texto conforme você já tinha feito
       const cleanedText = rawText
         .replace(/[#*`>-]/g, "") 
         .replace(/---+/g, "") 
