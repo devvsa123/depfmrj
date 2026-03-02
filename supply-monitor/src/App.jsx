@@ -95,15 +95,19 @@ const App = () => {
   // =========================================================================
   let apiKey = "";
   
-  // 1. Tenta Create React App ou Next.js (process.env)
-  if (typeof process !== 'undefined' && process.env) {
+  // 1. Tenta Vite (Padrão moderno, lê a variável que você configurou na Vercel)
+  if (typeof import.meta !== 'undefined' && import.meta.env) {
+      apiKey = import.meta.env.VITE_GEMINI_API_KEY || "";
+  }
+
+  // 2. Fallback para Create React App ou Next.js (process.env)
+  if (!apiKey && typeof process !== 'undefined' && process.env) {
       apiKey = process.env.REACT_APP_GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY || "";
   }
 
-  // 2. Fallback manual (NÃO RECOMENDADO PARA GITHUB PÚBLICO)
-  // Se nada funcionar e você precisar testar rápido, cole a chave aqui:
+  // 3. Fallback manual (NÃO RECOMENDADO PARA GITHUB PÚBLICO)
   if (!apiKey) {
-      apiKey = ""; // EX: "AIzaSy..."
+      apiKey = ""; 
   }
 
   useEffect(() => {
