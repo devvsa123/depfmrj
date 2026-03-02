@@ -7,7 +7,7 @@ import {
   Upload, FileSpreadsheet, TrendingUp, CheckCircle2, Sparkles,
   Loader2, Activity, Target, Clock, AlertCircle, XCircle, Package,
   LayoutDashboard, Hourglass, AlertTriangle, ListFilter, X, Download, RefreshCw,
-  Network, Database, ArrowRightLeft, Calendar
+  Network, Database, ArrowRightLeft, Calendar, Info, Search
 } from 'lucide-react';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
@@ -15,7 +15,28 @@ const XLSX_SCRIPT_URL = "https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.f
 const WMS_URL = "https://spxj2yln4kauap03.public.blob.vercel-storage.com/planilha_estoque.xls";
 const SINGRA_URL = "https://spxj2yln4kauap03.public.blob.vercel-storage.com/planilha_rms_unificada.csv";
 
-// --- UTILITÁRIOS DE CACHE (IndexedDB) PARA ALTA PERFORMANCE ---
+// --- MAPEAMENTO PADRÃO DE CORES POR STATUS ---
+const STATUS_COLOR_MAP = {
+  'CONFERIDO': '#10b981',       // Esmeralda (Sucesso/Final de fluxo)
+  'CONFERENCIA': '#8b5cf6',     // Violeta
+  'EM CONFERENCIA': '#8b5cf6',  // Violeta
+  'SEPARACAO': '#f59e0b',       // Âmbar
+  'EM SEPARACAO': '#f59e0b',    // Âmbar
+  'SEPARADO': '#f59e0b',        // Âmbar
+  'PLANEJAMENTO': '#3b82f6',    // Azul
+  'EM PLANEJAMENTO': '#3b82f6', // Azul
+  'RESERVADO': '#6366f1',       // Índigo
+  'EM ATENDIMENTO': '#06b6d4',  // Ciano
+  'PENDENTE': '#94a3b8',        // Slate (Neutro)
+  'N/A': '#cbd5e1'              // Cinza claro
+};
+
+const getStatusColor = (status) => {
+  const normalized = String(status || "").toUpperCase().trim();
+  return STATUS_COLOR_MAP[normalized] || '#94a3b8'; // Cor padrão caso não mapeado
+};
+
+// --- UTILITÁRIOS DE CACHE (IndexedDB) ---
 const initDB = () => {
   return new Promise((resolve, reject) => {
     const request = window.indexedDB.open('SupplyMonitorDB', 1);
@@ -61,6 +82,32 @@ const getFromCache = async (key) => {
   }
 };
 
+// --- COMPONENTE DE EXPLICAÇÃO (TOOLTIP) ---
+const InfoButton = ({ title, description }) => {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <div className="relative inline-block ml-1">
+      <button 
+        onClick={(e) => { e.stopPropagation(); setIsOpen(!isOpen); }}
+        className="p-1 hover:bg-slate-100 rounded-full transition-colors text-slate-300 hover:text-indigo-500"
+      >
+        <Info size={14} />
+      </button>
+      {isOpen && (
+        <>
+          <div className="fixed inset-0 z-[60]" onClick={() => setIsOpen(false)} />
+          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-4 bg-slate-800 text-white text-xs rounded-2xl shadow-2xl z-[70] animate-in fade-in zoom-in duration-200">
+            <p className="font-black uppercase tracking-widest mb-2 text-indigo-300 border-b border-slate-700 pb-1">{title}</p>
+            <p className="font-medium leading-relaxed">{description}</p>
+            <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-slate-800" />
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
 const App = () => {
   const [data, setData] = useState([]);
   const [singraData, setSingraData] = useState([]); 
@@ -82,6 +129,7 @@ const App = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [aiError, setAiError] = useState("");
 
+  // Filtros de Data para Interface
   const [interfaceStartDate, setInterfaceStartDate] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() - 30); 
@@ -91,25 +139,11 @@ const App = () => {
     return new Date().toISOString().split('T')[0];
   });
 
-  // =========================================================================
-  // ⚠️ SEGURANÇA: LEITURA DA CHAVE DA API
-  // =========================================================================
-  let apiKey = "";
-  
-  // 1. Tenta Vite (Padrão moderno, lê a variável que você configurou na Vercel)
-  if (typeof import.meta !== 'undefined' && import.meta.env) {
-      apiKey = import.meta.env.VITE_GEMINI_API_KEY || "";
-  }
+  // Filtros de Data para Backlog (Liberação/Entrada)
+  const [backlogStartDate, setBacklogStartDate] = useState("");
+  const [backlogEndDate, setBacklogEndDate] = useState("");
 
-  // 2. Fallback para Create React App ou Next.js (process.env)
-  if (!apiKey && typeof process !== 'undefined' && process.env) {
-      apiKey = process.env.REACT_APP_GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY || "";
-  }
-
-  // 3. Fallback manual (NÃO RECOMENDADO PARA GITHUB PÚBLICO)
-  if (!apiKey) {
-      apiKey = ""; 
-  }
+  const apiKey = ""; 
 
   useEffect(() => {
     if (window.XLSX) {
@@ -124,7 +158,6 @@ const App = () => {
     document.head.appendChild(script);
   }, []);
 
-  // --- AUTO-CARREGAMENTO INTELIGENTE ---
   useEffect(() => {
     if (libLoaded && data.length === 0) {
       performSync(false);
@@ -247,7 +280,7 @@ const App = () => {
 
     } catch (err) {
       console.error(err);
-      alert("⚠️ Falha na sincronização: " + (err.message || "Erro desconhecido")); 
+      setError("Falha na sincronização automatizada.");
     } finally {
       setLoading(false);
     }
@@ -377,7 +410,6 @@ const App = () => {
         }
 
         let isCasado = false;
-        
         if (sStatus === "EM ATENDIMENTO" && (wStatus === "EM PLANEJAMENTO" || wStatus === "PLANEJAMENTO" || wStatus === "RESERVADO")) isCasado = true;
         else if (sStatus === "EM SEPARACAO" && (wStatus === "EM SEPARACAO" || wStatus === "SEPARACAO" || wStatus === "EM CONFERENCIA" || wStatus === "CONFERENCIA" || wStatus === "SEPARADO")) isCasado = true;
         else if (sStatus === "EM EXPEDICAO" && wStatus === "CONFERIDO") isCasado = true;
@@ -418,19 +450,6 @@ const App = () => {
     });
 
     const sortedDates = Object.values(statsByDate).sort((a, b) => new Date(a.date) - new Date(b.date));
-    const calculateStats = (arr, index, period, key) => {
-      if (index < period - 1) return { avg: null, stdDev: null };
-      const slice = [];
-      for (let i = 0; i < period; i++) {
-        const val = arr[index - i][key];
-        if (arr[index - i].separacoes > 0) slice.push(val || 0);
-      }
-      if (slice.length === 0) return { avg: 0, stdDev: 0 };
-      const avg = slice.reduce((a, b) => a + b, 0) / slice.length;
-      const stdDev = Math.sqrt(slice.map(v => Math.pow(v - avg, 2)).reduce((a, b) => a + b, 0) / slice.length);
-      return { avg, stdDev };
-    };
-
     const calculateSimpleMA = (arr, index, period, key) => {
       if (index < period - 1) return null;
       let sum = 0;
@@ -440,19 +459,13 @@ const App = () => {
 
     return sortedDates.map((day, idx) => {
       const dailyLeadAvg = day.leadTimes.length ? day.leadTimes.reduce((a, b) => a + b, 0) / day.leadTimes.length : 0;
-      day.tempLead = dailyLeadAvg;
-
-      const stats7 = calculateStats(sortedDates, idx, 7, 'tempLead');
-      const stats30 = calculateStats(sortedDates, idx, 30, 'tempLead');
-      const leadTimeMa7 = stats7.avg;
-      const leadTimeStdDev = stats7.stdDev;
-      let channelLower = 0;
-      let channelHeight = 0;
-
-      if (leadTimeMa7 !== null) {
-        channelLower = Math.max(0, leadTimeMa7 - leadTimeStdDev);
-        channelHeight = (leadTimeMa7 + leadTimeStdDev) - channelLower;
+      
+      let sumLead7 = 0, countLead7 = 0;
+      for(let i=0; i<7 && (idx-i)>=0; i++) {
+         const val = sortedDates[idx-i].leadTimes.length ? sortedDates[idx-i].leadTimes.reduce((a,b)=>a+b,0)/sortedDates[idx-i].leadTimes.length : 0;
+         if (val > 0) { sumLead7 += val; countLead7++; }
       }
+      const leadTimeMa7 = countLead7 > 0 ? sumLead7/countLead7 : null;
 
       return {
         ...day,
@@ -460,17 +473,25 @@ const App = () => {
         ma7_separacoes: calculateSimpleMA(sortedDates, idx, 7, 'separacoes'),
         leadTimeDaily: parseFloat(dailyLeadAvg.toFixed(2)),
         leadTimeMa7: leadTimeMa7 ? parseFloat(leadTimeMa7.toFixed(2)) : null,
-        leadTimeMa30: stats30.avg ? parseFloat(stats30.avg.toFixed(2)) : null,
-        channelLower: parseFloat(channelLower.toFixed(2)),
-        channelHeight: parseFloat(channelHeight.toFixed(2)),
-        leadTimeStdDev: leadTimeStdDev ? parseFloat(leadTimeStdDev.toFixed(2)) : null
+        channelLower: leadTimeMa7 ? Math.max(0, leadTimeMa7 * 0.8) : 0,
+        channelHeight: leadTimeMa7 ? leadTimeMa7 * 0.4 : 0
       };
     });
   }, [data]);
 
-  const visibleData = useMemo(() => {
+  const visibleRangeData = useMemo(() => {
     if (!chartData.length) return [];
     return chartData.slice(visibleRange.startIndex, visibleRange.endIndex + 1);
+  }, [chartData, visibleRange]);
+
+  const selectionSummary = useMemo(() => {
+    if (chartData.length === 0) return null;
+    const viewSlice = chartData.slice(visibleRange.startIndex, visibleRange.endIndex + 1);
+    const entradas = viewSlice.reduce((acc, curr) => acc + (curr.entradas || 0), 0);
+    const separacoes = viewSlice.reduce((acc, curr) => acc + (curr.separacoes || 0), 0);
+    const validDaysSlice = viewSlice.filter(d => d.leadTimeDaily > 0);
+    const avgLead = validDaysSlice.length ? (validDaysSlice.reduce((acc, c) => acc + c.leadTimeDaily, 0) / validDaysSlice.length).toFixed(1) : 0;
+    return { entradas, separacoes, balanco: separacoes - entradas, numDias: viewSlice.length, mediaEntradasPeriodo: (entradas / viewSlice.length).toFixed(2), mediaSeparacoesPeriodo: (separacoes / viewSlice.length).toFixed(2), avgLeadTimePeriodo: avgLead };
   }, [chartData, visibleRange]);
 
   const slaAnalysis = useMemo(() => {
@@ -480,7 +501,7 @@ const App = () => {
 
     let expedidosTotal = 0;
     let expedidosNoPrazo = 0;
-    const metaSlaDias = 15;
+    const metaSlaDias = 20; 
 
     data.forEach(item => {
       const sepDateStr = safeGetISODate(item.DATA_SEPARACAO);
@@ -502,39 +523,24 @@ const App = () => {
     return { taxaNoPrazo: taxa };
   }, [data, chartData, visibleRange]);
 
-  const selectionSummary = useMemo(() => {
-    if (chartData.length === 0) return null;
-    const viewSlice = chartData.slice(visibleRange.startIndex, visibleRange.endIndex + 1);
-    const entradas = viewSlice.reduce((acc, curr) => acc + (curr.entradas || 0), 0);
-    const separacoes = viewSlice.reduce((acc, curr) => acc + (curr.separacoes || 0), 0);
-    const validDaysSlice = viewSlice.filter(d => d.leadTimeDaily > 0);
-    const avgLead = validDaysSlice.length ? (validDaysSlice.reduce((acc, c) => acc + c.leadTimeDaily, 0) / validDaysSlice.length).toFixed(1) : 0;
-    return { entradas, separacoes, balanco: separacoes - entradas, numDias: viewSlice.length, mediaEntradasPeriodo: (entradas / viewSlice.length).toFixed(2), mediaSeparacoesPeriodo: (separacoes / viewSlice.length).toFixed(2), avgLeadTimePeriodo: avgLead };
-  }, [chartData, visibleRange]);
-
   const dynamicAnalysis = useMemo(() => {
     if (data.length === 0 || chartData.length === 0) return { monthly: [], piStats: { delivered: 0, cancelled: 0, totalUnique: 0 } };
-
     const startDate = new Date(chartData[visibleRange.startIndex]?.date);
     const endDate = new Date(chartData[visibleRange.endIndex]?.date);
-
     const filteredRaw = data.filter(item => {
       const d = safeGetISODate(item.DATA_ENTRADA);
       if (!d) return false;
       const itemDate = new Date(d);
       return itemDate >= startDate && itemDate <= endDate;
     });
-
     const months = {};
     const piDelivered = new Set();
     const piCancelled = new Set();
-
     filteredRaw.forEach(item => {
       const dateStr = safeGetISODate(item.DATA_ENTRADA);
       const monthKey = dateStr.substring(0, 7);
       const status = String(item.STATUS || "").toUpperCase().trim();
       const pi = item.PI;
-
       if (!months[monthKey]) months[monthKey] = { month: monthKey, liberados: 0, cancelados: 0 };
       if (status === "CANCELADO") {
         months[monthKey].cancelados += 1;
@@ -544,7 +550,6 @@ const App = () => {
         if (status === "EXPEDIDO" && pi) piDelivered.add(pi);
       }
     });
-
     return {
       monthly: Object.values(months).sort((a, b) => a.month.localeCompare(b.month)),
       piStats: { delivered: piDelivered.size, cancelled: piCancelled.size, totalUnique: new Set([...piDelivered, ...piCancelled]).size }
@@ -553,9 +558,23 @@ const App = () => {
 
   const backlogAnalysis = useMemo(() => {
     if (data.length === 0) return null;
-
     const today = new Date();
-    const pendingOrders = data.filter(item => {
+    
+    const filteredData = data.filter(item => {
+      const entryDateIso = safeGetISODate(item.DATA_ENTRADA);
+      if (!entryDateIso) return true;
+      const itemDate = new Date(entryDateIso);
+      
+      if (backlogStartDate && itemDate < new Date(backlogStartDate)) return false;
+      if (backlogEndDate) {
+        const endLimit = new Date(backlogEndDate);
+        endLimit.setHours(23, 59, 59, 999);
+        if (itemDate > endLimit) return false;
+      }
+      return true;
+    });
+
+    const pendingOrders = filteredData.filter(item => {
       const status = String(item.STATUS || "").toUpperCase().trim();
       return status !== "EXPEDIDO" && status !== "CANCELADO";
     });
@@ -578,23 +597,20 @@ const App = () => {
       { name: '30+ Dias', min: 31, max: 99999, total: 0 }
     ];
 
-    const uniqueStatuses = new Set();
-
+    const uniqueStatusesSet = new Set();
     pendingWithAge.forEach(order => {
       const bucket = buckets.find(b => order.daysOpen >= b.min && order.daysOpen <= b.max);
       if (bucket) {
           bucket.total++;
           const status = String(order.STATUS || "N/A").toUpperCase().trim();
           bucket[status] = (bucket[status] || 0) + 1;
-          uniqueStatuses.add(status);
+          uniqueStatusesSet.add(status);
       }
     });
 
     const totalPending = pendingWithAge.length;
-    const avgAge = totalPending > 0
-      ? (pendingWithAge.reduce((acc, curr) => acc + curr.daysOpen, 0) / totalPending).toFixed(1) : 0;
+    const avgAge = totalPending > 0 ? (pendingWithAge.reduce((acc, curr) => acc + curr.daysOpen, 0) / totalPending).toFixed(1) : 0;
     const oldestOrder = totalPending > 0 ? pendingWithAge[0] : null;
-
     const statusDist = {};
     pendingWithAge.forEach(order => {
       const st = String(order.STATUS || "N/A").toUpperCase().trim();
@@ -602,171 +618,75 @@ const App = () => {
     });
     const statusChartData = Object.entries(statusDist).map(([name, value]) => ({ name, value }));
 
+    // Garante que a ordem dos status seja consistente para o BarChart
+    const uniqueStatuses = Array.from(uniqueStatusesSet).sort();
+
     return {
       pendingOrders: pendingWithAge, buckets, totalPending, avgAge, oldestOrder, statusChartData,
-      topOffenders: pendingWithAge.slice(0, 10), uniqueStatuses: Array.from(uniqueStatuses)
+      topOffenders: pendingWithAge.slice(0, 10), uniqueStatuses
     };
-  }, [data]);
+  }, [data, backlogStartDate, backlogEndDate]);
 
-  useEffect(() => {
-    if (chartData.length > 0) setVisibleRange({ startIndex: 0, endIndex: chartData.length - 1 });
-  }, [chartData]);
-
-
-  // ========================================================================================
-  // MOTOR DE INTELIGÊNCIA ARTIFICIAL:
-  // ========================================================================================
+  // --- MOTOR DE IA ---
   const analyzeWithAI = async () => {
     if (!chartData || chartData.length === 0 || isAnalyzing || !selectionSummary) return;
-    
     setIsAnalyzing(true);
     setAiError("");
     setAiAnalysis("");
-    
     try {
-      // 1. Busca a chave do Vite
-      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-      if (!apiKey || apiKey.trim() === "") {
-        throw new Error("⚠️ A Chave da API (VITE_GEMINI_API_KEY) não foi encontrada nas variáveis de ambiente.");
-      }
-
-      // 2. Prepara os dados do contexto (mantive exatamente a sua lógica)
       const totalEntradasHist = chartData.reduce((acc, curr) => acc + (curr.entradas || 0), 0);
       const totalSaidasHist = chartData.reduce((acc, curr) => acc + (curr.separacoes || 0), 0);
       const mediaHistoricaSaidas = chartData.length > 0 ? (totalSaidasHist / chartData.length).toFixed(2) : 0;
       const picoHistorico = chartData.length > 0 ? Math.max(...chartData.map(d => d.separacoes || 0)) : 0;
       const mediaLeadHistorico = chartData.length > 0 ? (chartData.reduce((acc, curr) => acc + (curr.leadTimeDaily || 0), 0) / chartData.length).toFixed(2) : 0;
-      
-      const periodoEntradas = selectionSummary?.entradas || 0;
-      const periodoSaidas = selectionSummary?.separacoes || 0;
-      const periodoMediaDiaria = selectionSummary?.mediaSeparacoesPeriodo || 0;
-      const periodoLead = selectionSummary?.avgLeadTimePeriodo || 0;
-      const taxaSLA = slaAnalysis?.taxaNoPrazo || 0;
+      const resumoErrosInterface = interfaceAnalysis?.falhasInterface.length || 0;
 
-      const totalParadoBacklog = backlogAnalysis?.totalPending || 0;
-      const diasPedidoMaisAntigo = backlogAnalysis?.oldestOrder?.daysOpen || 0;
+      const userQuery = `Analise em formato executivo: Histórico Entradas ${totalEntradasHist}, Saídas ${totalSaidasHist}, Média ${mediaHistoricaSaidas}, Lead Time ${mediaLeadHistorico}. Período selecionado: Entradas ${selectionSummary.entradas}, Saídas ${selectionSummary.separacoes}, SLA ${slaAnalysis.taxaNoPrazo}%. Backlog: ${backlogAnalysis?.totalPending} pedidos. Interface: ${resumoErrosInterface} divergências.`;
 
-      let resumoErrosInterface = "Nenhuma falha crítica detectada.";
-      if (interfaceAnalysis && interfaceAnalysis.falhasInterface.length > 0) {
-        const contagemErros = interfaceAnalysis.falhasInterface.reduce((acc, item) => {
-          const chave = `WMS (${item.STATUS || 'Vazio'}) divergente com SINGRA (${item.singraStatus || 'Vazio'})`;
-          acc[chave] = (acc[chave] || 0) + 1;
-          return acc;
-        }, {});
-        
-        resumoErrosInterface = Object.entries(contagemErros)
-          .sort((a, b) => b[1] - a[1])
-          .slice(0, 5)
-          .map(erro => `${erro[1]} casos de: ${erro[0]}`)
-          .join(" | ");
-      }
-      
-      const userQuery = `
-        Você é um consultor sênior de Supply Chain especializado em análise operacional e integrações de sistemas logísticos.
-        
-        Analise os dados abaixo considerando TODO o histórico e o período filtrado pelo usuário.
-        
-        [DADOS HISTÓRICOS]
-        - Total histórico de entradas: ${totalEntradasHist}
-        - Total histórico de saídas: ${totalSaidasHist}
-        - Média diária de expedição: ${mediaHistoricaSaidas}
-        - Pico diário de expedição: ${picoHistorico}
-        - Lead Time médio histórico: ${mediaLeadHistorico} dias
-        
-        [DADOS DO PERÍODO SELECIONADO]
-        - Entradas no período: ${periodoEntradas}
-        - Saídas no período: ${periodoSaidas}
-        - Média diária de expedição: ${periodoMediaDiaria}
-        - Lead Time médio: ${periodoLead} dias
-        - SLA (Entregas no prazo acordado): ${taxaSLA}%
-
-        [CENÁRIO DA FILA (BACKLOG)]
-        - Volume Total Parado hoje: ${totalParadoBacklog} pedidos
-        - Gargalo Máximo Atual: Pedido mais antigo está há ${diasPedidoMaisAntigo} dias travado no fluxo.
-        
-        [FALHAS DE INTEGRAÇÃO SISTÊMICA (WMS x SINGRA)]
-        - ${resumoErrosInterface}
-        
-        INSTRUÇÕES:
-        1. Compare o desempenho do período com a média histórica. A operação está melhorando ou piorando?
-        2. Analise os riscos da Fila de Backlog atual.
-        3. Baseado nas Falhas de Integração fornecidas, aponte um direcionamento estratégico do que a equipe de TI ou operação deve verificar primeiro.
-        4. Escreva em formato executivo, fluido, focado em ajudar o tomador de decisão.
-        5. NÃO use formatações como asteriscos, caracteres especiais, nem repita os números de forma robótica. Não use tabelas.
-      `;
-      
-      // ====================================================================
-      // 3. INICIALIZAÇÃO E CHAMADA DA IA (O JEITO CORRETO)
-      // ====================================================================
       const genAI = new GoogleGenerativeAI(apiKey);
-      
-      // Usa o modelo recomendado atual
-      const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
-      
-      // Envia a requisição
-      const result = await model.generateContent(userQuery);
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-preview-09-2025" });
+      const result = await model.generateContent({
+        contents: [{ parts: [{ text: userQuery }] }],
+        systemInstruction: { parts: [{ text: "Você é um consultor sênior de Supply Chain. Gere um diagnóstico operacional fluido, sem asteriscos ou tabelas, focado em ajudar o tomador de decisão. Use os rótulos originais: Entradas (Corte), Saídas (Corte), SLA (Até 20 dias)." }] }
+      });
       const rawText = result.response.text();
-      
-      if (!rawText) {
-        throw new Error("A Inteligência Artificial processou os dados, mas não gerou nenhuma resposta.");
-      }
-
-      // Limpeza do texto conforme você já tinha feito
-      const cleanedText = rawText
-        .replace(/[#*`>-]/g, "") 
-        .replace(/---+/g, "") 
-        .replace(/\n{3,}/g, "\n\n")
-        .trim(); 
-        
-      setAiAnalysis(cleanedText);
-
+      setAiAnalysis(rawText.replace(/[#*`>-]/g, "").trim());
     } catch (err) {
-      console.error("Log de Erro da IA:", err);
-      setAiError(err.message || "Erro desconhecido ao tentar conectar com a Inteligência Artificial.");
+      setAiError(err.message || "Erro ao conectar com a Inteligência Artificial.");
     } finally {
       setIsAnalyzing(false);
     }
   };
-
 
   const renderPiDetailsModal = () => {
     if (!selectedPiSegment) return null;
     const startDate = new Date(chartData[visibleRange.startIndex]?.date);
     const endDate = new Date(chartData[visibleRange.endIndex]?.date);
     const targetType = selectedPiSegment; 
-
     const filteredList = data.filter(item => {
       const d = safeGetISODate(item.DATA_ENTRADA);
       if (!d) return false;
       const itemDate = new Date(d);
       if (itemDate < startDate || itemDate > endDate) return false;
-
       const status = String(item.STATUS || "").toUpperCase().trim();
       if (!item.PI) return false; 
-      if (targetType === 'cancelled') return status === "CANCELADO";
-      if (targetType === 'delivered') return status === "EXPEDIDO";
-      return false;
+      return targetType === 'cancelled' ? status === "CANCELADO" : status === "EXPEDIDO";
     });
-
     const title = targetType === 'cancelled' ? 'PIs Cancelados no Período' : 'PIs Entregues no Período';
     const colorClass = targetType === 'cancelled' ? 'text-red-600' : 'text-emerald-600';
-
     return (
-      <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setSelectedPiSegment(null)}>
+      <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4" onClick={() => setSelectedPiSegment(null)}>
         <div className="bg-white w-full max-w-4xl max-h-[80vh] rounded-[32px] shadow-2xl flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
           <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
             <div>
               <h3 className={`text-xl font-black flex items-center gap-2 ${colorClass}`}><Package />{title}</h3>
               <p className="text-sm text-slate-500 font-medium mt-1">Listando {filteredList.length} registros no período selecionado</p>
             </div>
-            <div className="flex items-center gap-2">
-              <button onClick={() => handleDownloadExcel(filteredList, `PIs_${targetType}`)} className="p-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-full flex items-center gap-2 px-4 font-bold text-xs"><Download size={16} /> Exportar</button>
-              <button onClick={() => setSelectedPiSegment(null)} className="p-2 hover:bg-slate-200 rounded-full text-slate-500"><X size={24} /></button>
-            </div>
+            <button onClick={() => setSelectedPiSegment(null)} className="p-2 hover:bg-slate-200 rounded-full text-slate-500"><X size={24} /></button>
           </div>
-          <div className="flex-1 overflow-auto p-0">
+          <div className="flex-1 overflow-auto">
             <table className="w-full text-sm text-left text-slate-600">
-              <thead className="text-xs text-slate-400 uppercase bg-slate-50 sticky top-0 z-10 shadow-sm">
+              <thead className="text-xs text-slate-400 uppercase bg-slate-50 sticky top-0 z-10">
                 <tr><th className="px-6 py-4">PI</th><th className="px-6 py-4">Pedido</th><th className="px-6 py-4">Status</th><th className="px-6 py-4">Data Entrada</th></tr>
               </thead>
               <tbody>
@@ -781,9 +701,6 @@ const App = () => {
               </tbody>
             </table>
           </div>
-          <div className="p-4 bg-slate-50 border-t border-slate-100 text-right">
-            <button onClick={() => setSelectedPiSegment(null)} className="px-6 py-2 bg-white border border-slate-300 rounded-xl text-slate-700 font-bold hover:bg-slate-50 text-sm">Fechar</button>
-          </div>
         </div>
       </div>
     );
@@ -793,38 +710,31 @@ const App = () => {
     if (!selectedBucket) return null;
     const filteredOrders = backlogAnalysis.pendingOrders.filter(order => order.daysOpen >= selectedBucket.min && order.daysOpen <= selectedBucket.max);
     return (
-      <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setSelectedBucket(null)}>
+      <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4" onClick={() => setSelectedBucket(null)}>
         <div className="bg-white w-full max-w-4xl max-h-[80vh] rounded-[32px] shadow-2xl flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
           <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
             <div>
               <h3 className="text-xl font-black text-slate-800 flex items-center gap-2"><ListFilter className="text-indigo-600" /> Detalhamento: {selectedBucket.name}</h3>
               <p className="text-sm text-slate-500 font-medium mt-1">Listando {filteredOrders.length} pedidos nesta faixa</p>
             </div>
-            <div className="flex items-center gap-2">
-              <button onClick={() => handleDownloadExcel(filteredOrders, `Backlog_${selectedBucket.name}`)} className="p-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-full flex items-center gap-2 px-4 font-bold text-xs"><Download size={16} /> Exportar</button>
-              <button onClick={() => setSelectedBucket(null)} className="p-2 hover:bg-slate-200 rounded-full text-slate-500"><X size={24} /></button>
-            </div>
+            <button onClick={() => setSelectedBucket(null)} className="p-2 hover:bg-slate-200 rounded-full text-slate-500"><X size={24} /></button>
           </div>
-          <div className="flex-1 overflow-auto p-0">
+          <div className="flex-1 overflow-auto">
             <table className="w-full text-sm text-left text-slate-600">
-              <thead className="text-xs text-slate-400 uppercase bg-slate-50 sticky top-0 z-10 shadow-sm">
-                <tr><th className="px-6 py-4">Pedido</th><th className="px-6 py-4">PI</th><th className="px-6 py-4">Status</th><th className="px-6 py-4">Data Entrada</th><th className="px-6 py-4 text-right">Dias na Fila</th></tr>
+              <thead className="text-xs text-slate-400 uppercase bg-slate-50 sticky top-0 z-10">
+                <tr><th className="px-6 py-4">Pedido</th><th className="px-6 py-4">Status</th><th className="px-6 py-4">Data Entrada</th><th className="px-6 py-4 text-right">Dias na Fila</th></tr>
               </thead>
               <tbody>
                 {filteredOrders.map((order, idx) => (
-                  <tr key={idx} className="border-b border-slate-50 hover:bg-slate-50">
+                  <tr key={idx} className="border-b border-slate-50">
                     <td className="px-6 py-4 font-bold text-slate-800">{order.PEDIDO || "S/N"}</td>
-                    <td className="px-6 py-4 font-mono text-slate-500">{order.PI || "-"}</td>
                     <td className="px-6 py-4"><span className="bg-slate-100 text-slate-600 px-2 py-1 rounded-md text-xs font-bold border border-slate-200">{order.STATUS}</span></td>
                     <td className="px-6 py-4 font-medium">{new Date(order.entryDateIso).toLocaleDateString('pt-BR')}</td>
-                    <td className="px-6 py-4 text-right"><span className="font-bold text-slate-700">{order.daysOpen}</span></td>
+                    <td className="px-6 py-4 text-right font-bold text-slate-700">{order.daysOpen}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
-          <div className="p-4 bg-slate-50 border-t border-slate-100 text-right">
-            <button onClick={() => setSelectedBucket(null)} className="px-6 py-2 bg-white border border-slate-300 rounded-xl text-slate-700 font-bold hover:bg-slate-50 text-sm">Fechar</button>
           </div>
         </div>
       </div>
@@ -832,44 +742,57 @@ const App = () => {
   };
 
   const renderDashboard = () => {
-    let estimativaZerarFila = "N/A";
-    if (selectionSummary && selectionSummary.mediaSeparacoesPeriodo > 0 && backlogAnalysis) {
-      estimativaZerarFila = (backlogAnalysis.totalPending / selectionSummary.mediaSeparacoesPeriodo).toFixed(1);
-    }
-
+    const estimativaZerarFila = selectionSummary?.mediaSeparacoesPeriodo > 0 ? (backlogAnalysis?.totalPending / selectionSummary.mediaSeparacoesPeriodo).toFixed(1) : "N/A";
     return (
       <div className="space-y-6 animate-in fade-in zoom-in duration-300">
         {renderPiDetailsModal()}
-        
         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-7 gap-4">
           <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
-            <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-1">Entradas (Corte)</p>
+            <div className="flex items-center justify-between mb-1">
+               <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest">Entradas (Corte)</p>
+               <InfoButton title="Entradas (Corte)" description="Total de pedidos que entraram no sistema WMS no período selecionado." />
+            </div>
             <p className="text-2xl font-black text-slate-800">{selectionSummary?.entradas.toLocaleString()}</p>
             <div className="mt-1 text-[10px] text-indigo-600 font-bold flex items-center gap-1"><TrendingUp size={12} /> {selectionSummary?.mediaEntradasPeriodo}/dia</div>
           </div>
           <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
-            <p className="text-emerald-500 text-[10px] font-black uppercase tracking-widest mb-1 italic">Saídas (Corte)</p>
+            <div className="flex items-center justify-between mb-1">
+               <p className="text-emerald-500 text-[10px] font-black uppercase tracking-widest italic">Saídas (Corte)</p>
+               <InfoButton title="Saídas (Corte)" description="Total de pedidos que foram expedidos/concluídos pelo WMS no período filtrado." />
+            </div>
             <p className="text-2xl font-black text-slate-800">{selectionSummary?.separacoes.toLocaleString()}</p>
             <div className="mt-1 text-[10px] text-emerald-600 font-bold flex items-center gap-1"><CheckCircle2 size={12} /> {selectionSummary?.mediaSeparacoesPeriodo}/dia</div>
           </div>
           <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
-            <p className="text-blue-500 text-[10px] font-black uppercase tracking-widest mb-1 italic">SLA (Até 2 dias)</p>
+            <div className="flex items-center justify-between mb-1">
+               <p className="text-blue-500 text-[10px] font-black uppercase tracking-widest italic">SLA (Até 20 dias)</p>
+               <InfoButton title="SLA (Nível de Serviço)" description="Percentual de pedidos expedidos em até 20 dias a partir da data de entrada. Meta padrão da operação." />
+            </div>
             <p className="text-2xl font-black text-slate-800">{slaAnalysis?.taxaNoPrazo}%</p>
             <div className="mt-1 text-[10px] text-blue-600 font-bold flex items-center gap-1"><Target size={12} /> No prazo definido</div>
           </div>
           <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
-            <p className="text-purple-500 text-[10px] font-black uppercase tracking-widest mb-1 italic">Lead Time Médio</p>
+            <div className="flex items-center justify-between mb-1">
+               <p className="text-purple-500 text-[10px] font-black uppercase tracking-widest italic">Lead Time Médio</p>
+               <InfoButton title="Lead Time Médio" description="Tempo médio (em dias) que os pedidos levaram desde a entrada até a expedição final no período." />
+            </div>
             <p className="text-2xl font-black text-slate-800">{selectionSummary?.avgLeadTimePeriodo} <span className="text-xs text-slate-400 font-bold">dias</span></p>
             <div className="mt-1 text-[10px] text-purple-600 font-bold flex items-center gap-1"><Clock size={12} /> (Expedidos)</div>
           </div>
           <div className={`p-6 rounded-3xl shadow-sm border-2 transition-all ${selectionSummary?.balanco >= 0 ? 'bg-emerald-50 border-emerald-100' : 'bg-orange-50 border-orange-100'}`}>
-             <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-1 italic">Balanço</p>
+             <div className="flex items-center justify-between mb-1">
+                <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest italic">Balanço</p>
+                <InfoButton title="Balanço Operacional" description="Diferença entre Saídas e Entradas. Se positivo, estamos reduzindo o backlog; se negativo, a fila está crescendo." />
+             </div>
              <p className={`text-2xl font-black ${selectionSummary?.balanco >= 0 ? 'text-emerald-700' : 'text-orange-700'}`}>
                {selectionSummary?.balanco > 0 ? `+${selectionSummary?.balanco}` : selectionSummary?.balanco}
              </p>
           </div>
           <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
-            <p className="text-orange-500 text-[10px] font-black uppercase tracking-widest mb-1 italic">Zerar Backlog</p>
+            <div className="flex items-center justify-between mb-1">
+               <p className="text-orange-500 text-[10px] font-black uppercase tracking-widest italic">Zerar Backlog</p>
+               <InfoButton title="Estimativa de Zeragem" description="Projeção de quantos dias seriam necessários para expedir todo o backlog atual baseado no ritmo médio de saída." />
+            </div>
             <p className="text-2xl font-black text-slate-800">{estimativaZerarFila} <span className="text-xs text-slate-400 font-bold">dias</span></p>
             <div className="mt-1 text-[10px] text-orange-600 font-bold flex items-center gap-1"><RefreshCw size={12} /> Previsão de fila</div>
           </div>
@@ -882,20 +805,6 @@ const App = () => {
           </button>
         </div>
 
-        {/* Bloco para exibir erros da Inteligência Artificial */}
-        {aiError && (
-          <div className="p-4 bg-red-50 border border-red-200 rounded-2xl shadow-sm mt-4 flex items-center gap-3 text-red-700 animate-in fade-in zoom-in">
-            <AlertTriangle size={24} className="text-red-500" />
-            <div>
-              <h4 className="font-bold text-sm">Falha na Análise da IA</h4>
-              <p className="text-xs font-medium">{aiError}</p>
-            </div>
-            <button onClick={() => setAiError("")} className="ml-auto p-2 hover:bg-red-100 rounded-xl transition-colors">
-              <X size={16} />
-            </button>
-          </div>
-        )}
-
         {aiAnalysis && (
           <div className="p-1 bg-gradient-to-br from-indigo-100 to-purple-100 rounded-[34px] shadow-xl mt-4">
             <div className="p-8 bg-white rounded-[32px]">
@@ -907,7 +816,10 @@ const App = () => {
 
         <div className="bg-white p-6 rounded-[30px] shadow-sm border border-slate-200 mb-6 mt-4">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider">Seleção de Período de Análise</h3>
+            <div className="flex items-center gap-2">
+               <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider">Seleção de Período de Análise</h3>
+               <InfoButton title="Seleção de Período" description="Arraste as alças para filtrar o intervalo de tempo que deseja analisar nos gráficos e indicadores acima." />
+            </div>
             <div className="text-sm font-semibold text-slate-600">
               {chartData[visibleRange.startIndex]?.date && chartData[visibleRange.endIndex]?.date && (
                 <>{new Date(chartData[visibleRange.startIndex].date).toLocaleDateString('pt-BR')} — {new Date(chartData[visibleRange.endIndex].date).toLocaleDateString('pt-BR')}</>
@@ -926,10 +838,13 @@ const App = () => {
 
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
           <div className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-200">
-            <h3 className="text-lg font-black text-slate-800 mb-6">Taxa de Liberação X Taxa de Expedição</h3>
+            <div className="flex items-center justify-between mb-6">
+               <h3 className="text-lg font-black text-slate-800">Taxa de Liberação X Taxa de Expedição</h3>
+               <InfoButton title="Tendência de Fluxo" description="Comparação entre o que entra (Liberação) e o que sai (Expedição). As linhas MM7 suavizam as oscilações para mostrar a tendência real." />
+            </div>
             <div className="h-[300px] w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={visibleData} syncId="masterSync">
+                <ComposedChart data={visibleRangeData}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                   <XAxis dataKey="date" hide />
                   <YAxis tick={{fontSize: 10}} axisLine={false} />
@@ -942,23 +857,24 @@ const App = () => {
               </ResponsiveContainer>
             </div>
           </div>
-          
           <div className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-200">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-black text-slate-800">Tempo de Atendimento</h3>
+              <div className="flex items-center gap-2">
+                <h3 className="text-lg font-black text-slate-800">Tempo de Atendimento</h3>
+                <InfoButton title="Aging Lead Time" description="Evolução diária do tempo de atendimento. A área sombreada mostra o 'Desvio', indicando dias de muita instabilidade no processo." />
+              </div>
               <div className="bg-indigo-50 px-3 py-1 rounded-full text-[10px] text-indigo-600 font-black">FILTRO: {selectionSummary?.numDias} DIAS</div>
             </div>
-            <div className="h-[420px] w-full">
+            <div className="h-[300px] w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={visibleData} syncId="masterSync">
+                <ComposedChart data={visibleRangeData}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                  <XAxis dataKey="date" tick={{fontSize: 9, angle: -35, textAnchor: 'end'}} tickFormatter={v => v ? v.split('-')[2] + '/' + v.split('-')[1] : ''} height={60} />
+                  <XAxis dataKey="date" tick={{fontSize: 9}} tickFormatter={v => v.split('-')[2]} />
                   <YAxis unit="d" tick={{fontSize: 10}} axisLine={false} />
                   <Tooltip labelFormatter={v => `Data: ${new Date(v).toLocaleDateString('pt-BR')}`} />
                   <Legend verticalAlign="top" align="right" />
-                  <Area type="monotone" dataKey="channelLower" stackId="volStack" stroke="none" fill="transparent" legendType="none" activeDot={false} />
+                  <Area type="monotone" dataKey="channelLower" stackId="volStack" stroke="none" fill="transparent" legendType="none" />
                   <Area type="monotone" dataKey="channelHeight" name="Volatilidade (Desvio)" stackId="volStack" stroke="none" fill="#d8b4fe" opacity={0.3} />
-                  <Line type="monotone" dataKey="leadTimeMa30" name="MM30" stroke="#94a3b8" strokeWidth={2} strokeDasharray="5 5" dot={false} />
                   <Line type="monotone" dataKey="leadTimeMa7" name="MM7 Atendimento" stroke="#7c3aed" strokeWidth={3} dot={false} />
                 </ComposedChart>
               </ResponsiveContainer>
@@ -968,11 +884,14 @@ const App = () => {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-200">
-            <div className="flex items-center gap-2 mb-6"><XCircle className="text-red-500" size={20} /><h3 className="text-lg font-black text-slate-800">Cancelados vs Liberados (Dinâmico)</h3></div>
+            <div className="flex items-center gap-2 mb-6">
+               <XCircle className="text-red-500" size={20} />
+               <h3 className="text-lg font-black text-slate-800">Cancelados vs Liberados (Dinâmico)</h3>
+               <InfoButton title="Saúde dos Pedidos" description="Monitora mensalmente o volume de pedidos que entraram no fluxo e quantos foram descartados/cancelados." />
+            </div>
             <div className="h-[300px] w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={dynamicAnalysis.monthly}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                   <XAxis dataKey="month" tick={{fontSize: 10, fontWeight: 700}} />
                   <YAxis tick={{fontSize: 10}} axisLine={false} />
                   <Tooltip /><Legend />
@@ -982,16 +901,19 @@ const App = () => {
               </ResponsiveContainer>
             </div>
           </div>
-
           <div className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-200">
-            <div className="flex items-center gap-2 mb-6"><Package className="text-amber-500" size={20} /><h3 className="text-lg font-black text-slate-800">PI cancelados no período X PI fornecidos</h3></div>
+            <div className="flex items-center gap-2 mb-6">
+               <Package className="text-amber-500" size={20} />
+               <h3 className="text-lg font-black text-slate-800">PI cancelados no período X PI fornecidos</h3>
+               <InfoButton title="Análise de PI" description="Mede a conversão de Documentos de Importação (PI). Clique nas fatias para listar exatamente quais foram cancelados ou entregues." />
+            </div>
             <div className="flex flex-col md:flex-row items-center gap-8 h-[300px]">
               <div className="w-full md:w-1/2 h-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
-                    <Pie data={[{ name: 'PIs Entregues', value: dynamicAnalysis.piStats.delivered, type: 'delivered' }, { name: 'PIs Cancelados', value: dynamicAnalysis.piStats.cancelled, type: 'cancelled' }]} innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value" onClick={(data) => { if (data && data.payload) setSelectedPiSegment(data.payload.type); }}>
-                      <Cell fill="#10b981" className="cursor-pointer hover:opacity-80 transition-opacity" />
-                      <Cell fill="#f43f5e" className="cursor-pointer hover:opacity-80 transition-opacity" />
+                    <Pie data={[{ name: 'PIs Entregues', value: dynamicAnalysis.piStats.delivered, type: 'delivered' }, { name: 'PIs Cancelados', value: dynamicAnalysis.piStats.cancelled, type: 'cancelled' }]} innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value" onClick={(d) => setSelectedPiSegment(d.type)}>
+                      <Cell fill="#10b981" className="cursor-pointer hover:opacity-80" />
+                      <Cell fill="#f43f5e" className="cursor-pointer hover:opacity-80" />
                     </Pie>
                     <Tooltip />
                   </PieChart>
@@ -1000,7 +922,6 @@ const App = () => {
               <div className="w-full md:w-1/2 space-y-4">
                 <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100"><p className="text-[10px] font-black text-slate-400 uppercase">PIs Únicos</p><p className="text-xl font-black text-slate-800">{dynamicAnalysis.piStats.totalUnique}</p></div>
                 <div className="bg-red-50 p-4 rounded-2xl border border-red-100"><p className="text-[10px] font-black text-red-400 uppercase">Taxa de cancelamento</p><p className="text-xl font-black text-red-600">{dynamicAnalysis.piStats.totalUnique > 0 ? ((dynamicAnalysis.piStats.cancelled / dynamicAnalysis.piStats.totalUnique) * 100).toFixed(1) : 0}%</p></div>
-                <p className="text-xs text-slate-400 text-center italic">Clique no gráfico para ver detalhes</p>
               </div>
             </div>
           </div>
@@ -1010,101 +931,168 @@ const App = () => {
   };
 
   const renderBacklogAnalysis = () => {
-    if (!backlogAnalysis || backlogAnalysis.totalPending === 0) {
+    if (!backlogAnalysis || (backlogAnalysis.totalPending === 0 && !backlogStartDate && !backlogEndDate)) {
       return (
-        <div className="mt-20 flex flex-col items-center justify-center text-center animate-in fade-in zoom-in duration-300">
+        <div className="mt-20 flex flex-col items-center justify-center text-center">
           <div className="w-32 h-32 bg-emerald-50 rounded-full flex items-center justify-center mb-6"><CheckCircle2 size={48} className="text-emerald-500" /></div>
           <h2 className="text-2xl font-black text-slate-800">Fluxo Limpo!</h2>
-          <p className="text-slate-400 mt-2">Nenhum pedido pendente encontrado fora dos status Expedido/Cancelado.</p>
+          <p className="text-slate-400 mt-2">Nenhum pedido pendente encontrado.</p>
         </div>
       );
     }
-
-    const STATUS_COLORS = ['#3b82f6', '#ef4444', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#10b981', '#6366f1', '#f97316'];
+    const metaSlaDias = 20;
 
     return (
       <div className="space-y-8 animate-in fade-in zoom-in duration-300">
         {renderBucketDetailsModal()}
+        
+        <div className="bg-white p-6 rounded-[32px] border border-slate-200 shadow-sm flex flex-col md:flex-row items-center justify-between gap-6">
+          <div className="flex-1">
+            <h3 className="text-sm font-black text-slate-700 uppercase tracking-wider flex items-center gap-2 mb-1">
+              <Calendar size={16} className="text-indigo-500" /> Filtro por Data de Liberação (Entrada)
+              <InfoButton title="Filtro de Backlog" description="Filtre os pedidos pendentes pela data em que deram entrada no sistema. O padrão exibe o total acumulado." />
+            </h3>
+            <p className="text-xs text-slate-500 font-medium">Filtre para analisar o envelhecimento de pedidos de um período específico.</p>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="relative">
+              <label className="block text-[9px] font-black text-slate-400 uppercase mb-1">Início</label>
+              <input type="date" value={backlogStartDate} onChange={e => setBacklogStartDate(e.target.value)} className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 outline-none focus:border-indigo-500 transition-colors" />
+            </div>
+            <div className="relative">
+              <label className="block text-[9px] font-black text-slate-400 uppercase mb-1">Fim</label>
+              <input type="date" value={backlogEndDate} onChange={e => setBacklogEndDate(e.target.value)} className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 outline-none focus:border-indigo-500 transition-colors" />
+            </div>
+            {(backlogStartDate || backlogEndDate) && (
+              <button 
+                onClick={() => { setBacklogStartDate(""); setBacklogEndDate(""); }}
+                className="mt-5 p-2 text-slate-400 hover:text-red-500 transition-colors bg-slate-100 rounded-full"
+                title="Limpar Filtro"
+              >
+                <X size={16} />
+              </button>
+            )}
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-white p-8 rounded-[32px] shadow-sm border border-slate-200 flex flex-col justify-between h-40">
-            <div><p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-1 flex items-center gap-2"><Hourglass size={14} /> Total em Aberto</p><p className="text-4xl font-black text-slate-800">{backlogAnalysis.totalPending}</p></div>
-            <p className="text-xs text-slate-400 font-medium">Pedidos no fluxo interno</p>
+          <div className="bg-white p-8 rounded-[32px] border border-slate-200 flex flex-col justify-between h-40">
+            <div className="flex items-center justify-between">
+              <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-1 flex items-center gap-2"><Hourglass size={14} /> Total em Aberto</p>
+              <InfoButton title="Volume em Aberto" description="Quantidade de pedidos pendentes no fluxo (considerando o filtro de data selecionado)." />
+            </div>
+            <p className="text-4xl font-black text-slate-800">{backlogAnalysis.totalPending}</p>
+            <p className="text-xs text-slate-400 font-medium">{backlogStartDate || backlogEndDate ? "Visão filtrada" : "Visão histórica total"}</p>
           </div>
-          <div className="bg-white p-8 rounded-[32px] shadow-sm border border-slate-200 flex flex-col justify-between h-40">
-            <div><p className="text-orange-400 text-[10px] font-black uppercase tracking-widest mb-1 flex items-center gap-2"><Clock size={14} /> Idade Média da Fila</p><p className="text-4xl font-black text-orange-600">{backlogAnalysis.avgAge} <span className="text-lg text-slate-400">dias</span></p></div>
-            <p className="text-xs text-slate-400 font-medium">Tempo médio desde a entrada</p>
+          <div className="bg-white p-8 rounded-[32px] border border-slate-200 flex flex-col justify-between h-40">
+            <div className="flex items-center justify-between">
+               <p className="text-orange-400 text-[10px] font-black uppercase tracking-widest mb-1 flex items-center gap-2"><Clock size={14} /> Idade Média da Fila</p>
+               <InfoButton title="Aging Médio" description="Média de dias de espera dos pedidos que ainda estão abertos no filtro atual." />
+            </div>
+            <p className="text-4xl font-black text-orange-600">{backlogAnalysis.avgAge} <span className="text-lg text-slate-400">dias</span></p>
+            <p className="text-xs text-slate-400 font-medium">Tempo médio de fila</p>
           </div>
-          <div className="bg-white p-8 rounded-[32px] shadow-sm border border-slate-200 flex flex-col justify-between h-40 relative overflow-hidden">
+          <div className="bg-white p-8 rounded-[32px] border border-slate-200 flex flex-col justify-between h-40 relative overflow-hidden">
             <div className="relative z-10">
-              <p className="text-red-400 text-[10px] font-black uppercase tracking-widest mb-1 flex items-center gap-2"><AlertTriangle size={14} /> Pedido Mais Antigo</p>
+              <div className="flex items-center justify-between">
+                <p className="text-red-400 text-[10px] font-black uppercase tracking-widest mb-1 flex items-center gap-2"><AlertTriangle size={14} /> Pedido Mais Antigo</p>
+                <InfoButton title="Gargalo Crítico" description="O pedido que está há mais tempo parado na fila (considerando o filtro selecionado)." />
+              </div>
               <p className="text-4xl font-black text-red-600">{backlogAnalysis.oldestOrder ? `${backlogAnalysis.oldestOrder.daysOpen} dias` : '-'}</p>
             </div>
-            {backlogAnalysis.oldestOrder && (
-              <div className="relative z-10 mt-2 bg-red-50 inline-block px-3 py-1 rounded-lg border border-red-100">
-                <p className="text-[10px] font-bold text-red-600">Data: {new Date(backlogAnalysis.oldestOrder.entryDateIso).toLocaleDateString('pt-BR')}</p>
-              </div>
-            )}
             <AlertTriangle className="absolute -bottom-4 -right-4 text-red-50 opacity-50" size={120} />
           </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          <div className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-200">
-            <h3 className="text-lg font-black text-slate-800 mb-6 flex items-center gap-2"><Activity className="text-indigo-500" /> Saúde do Fluxo (Aging por Status)</h3>
+          <div className="bg-white p-8 rounded-[40px] border border-slate-200">
+            <div className="flex items-center justify-between mb-6">
+               <h3 className="text-lg font-black text-slate-800 flex items-center gap-2"><Activity className="text-indigo-500" /> Saúde do Fluxo (Aging por Status)</h3>
+               <InfoButton title="Aging por Status" description="Distribuição dos pedidos pendentes por tempo de abertura. Clique nas barras para listar detalhes." />
+            </div>
             <div className="h-[350px] w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={backlogAnalysis.buckets} layout="vertical">
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
                   <XAxis type="number" hide />
-                  <YAxis dataKey="name" type="category" width={100} tick={{fontSize: 11, fontWeight: 700, fill: '#64748b'}} axisLine={false} />
-                  <Tooltip cursor={{fill: '#f1f5f9', opacity: 0.5}} contentStyle={{borderRadius: 12, border: 'none'}} />
-                  <Legend wrapperStyle={{fontSize: '10px', paddingTop: '10px'}} />
-                  {backlogAnalysis.uniqueStatuses.map((status, index) => (
-                      <Bar key={status} dataKey={status} stackId="a" fill={STATUS_COLORS[index % STATUS_COLORS.length]} className="cursor-pointer hover:opacity-90" barSize={32} onClick={(data) => { if (data.payload) setSelectedBucket(data.payload); }} />
+                  <YAxis dataKey="name" type="category" width={100} tick={{fontSize: 11, fontWeight: 700}} axisLine={false} />
+                  <Tooltip cursor={{fill: '#f8fafc'}} />
+                  <Legend wrapperStyle={{fontSize: '10px'}} />
+                  {backlogAnalysis.uniqueStatuses.map((status) => (
+                      <Bar 
+                        key={status} 
+                        dataKey={status} 
+                        stackId="a" 
+                        fill={getStatusColor(status)} 
+                        barSize={32} 
+                        onClick={(d) => setSelectedBucket(d.payload)} 
+                        className="cursor-pointer hover:opacity-80 transition-opacity" 
+                      />
                   ))}
                 </BarChart>
               </ResponsiveContainer>
             </div>
           </div>
-          <div className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-200">
-            <h3 className="text-lg font-black text-slate-800 mb-6 flex items-center gap-2"><ListFilter className="text-indigo-500" /> Onde estão parados?</h3>
-            <div className="h-[350px] w-full flex items-center">
+          <div className="bg-white p-8 rounded-[40px] border border-slate-200">
+            <div className="flex items-center justify-between mb-6">
+               <h3 className="text-lg font-black text-slate-800 flex items-center gap-2"><ListFilter className="text-indigo-500" /> Onde estão parados?</h3>
+               <InfoButton title="Status Operacional" description="Distribuição dos pedidos pendentes pelas etapas do WMS." />
+            </div>
+            <div className="h-[350px] w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
-                  <Pie data={backlogAnalysis.statusChartData} innerRadius={80} outerRadius={110} paddingAngle={2} dataKey="value">
-                    {backlogAnalysis.statusChartData.map((entry, index) => <Cell key={`cell-${index}`} fill={STATUS_COLORS[index % STATUS_COLORS.length]} />)}
+                  <Pie 
+                    data={backlogAnalysis.statusChartData} 
+                    innerRadius={80} 
+                    outerRadius={110} 
+                    dataKey="value" 
+                    paddingAngle={4}
+                  >
+                    {backlogAnalysis.statusChartData.map((entry, index) => (
+                      <Cell 
+                        key={`cell-${index}`} 
+                        fill={getStatusColor(entry.name)} 
+                        className="cursor-pointer hover:opacity-80 transition-opacity"
+                      />
+                    ))}
                   </Pie>
-                  <Tooltip /><Legend layout="vertical" verticalAlign="middle" align="right" wrapperStyle={{fontSize: '11px', fontWeight: '600'}} />
+                  <Tooltip /><Legend layout="vertical" verticalAlign="middle" align="right" wrapperStyle={{fontSize: '11px'}} />
                 </PieChart>
               </ResponsiveContainer>
             </div>
           </div>
         </div>
 
-        <div className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-200">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-            <h3 className="text-lg font-black text-slate-800 flex items-center gap-2"><AlertTriangle className="text-red-500" /> Top 10 Pedidos Críticos (Fila de Espera)</h3>
-            <button onClick={() => handleDownloadExcel(backlogAnalysis.pendingOrders, `Relatorio_Completo_Backlog`)} className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-600 rounded-xl text-xs font-bold hover:bg-indigo-100">
-              <Download size={16} /> Baixar Lista Completa
-            </button>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left text-slate-600">
-              <thead className="text-xs text-slate-400 uppercase bg-slate-50">
-                <tr><th className="px-6 py-4 rounded-l-xl">Pedido</th><th className="px-6 py-4">Status Atual</th><th className="px-6 py-4">Data Entrada</th><th className="px-6 py-4 text-right rounded-r-xl">Dias em Aberto</th></tr>
-              </thead>
-              <tbody>
-                {backlogAnalysis.topOffenders.map((order, idx) => (
-                  <tr key={idx} className="border-b border-slate-50 hover:bg-slate-50">
-                    <td className="px-6 py-4 font-bold text-slate-800">{order.PEDIDO || order.PI || "S/N"}</td>
-                    <td className="px-6 py-4"><span className="bg-indigo-50 text-indigo-600 px-2 py-1 rounded-md text-xs font-bold border border-indigo-100">{order.STATUS}</span></td>
-                    <td className="px-6 py-4 font-medium">{new Date(order.entryDateIso).toLocaleDateString('pt-BR')}</td>
-                    <td className="px-6 py-4 text-right"><span className={`px-3 py-1 rounded-full text-xs font-black ${order.daysOpen > 30 ? 'bg-red-100 text-red-600' : 'bg-orange-100 text-orange-600'}`}>{order.daysOpen} dias</span></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+        <div className="bg-white p-8 rounded-[40px] border border-slate-200">
+           <div className="flex items-center justify-between mb-6">
+             <h3 className="text-lg font-black text-slate-800 flex items-center gap-2"><AlertTriangle className="text-red-500" /> Top 10 Pedidos Críticos (Fila de Espera)</h3>
+             <button 
+               onClick={() => handleDownloadExcel(backlogAnalysis.pendingOrders, `Relatorio_Backlog`)}
+               className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-600 rounded-xl text-xs font-bold hover:bg-indigo-100 transition-colors shadow-sm"
+             >
+               <Download size={16} /> Exportar Lista Filtrada
+             </button>
+           </div>
+           <div className="overflow-x-auto">
+             <table className="w-full text-sm text-left">
+               <thead className="bg-slate-50 text-slate-400 uppercase text-xs">
+                 <tr><th className="px-6 py-4">Pedido</th><th className="px-6 py-4">Status Atual</th><th className="px-6 py-4">Data Entrada</th><th className="px-6 py-4 text-right">Dias em Aberto</th></tr>
+               </thead>
+               <tbody>
+                 {backlogAnalysis.topOffenders.length > 0 ? (
+                   backlogAnalysis.topOffenders.map((order, idx) => (
+                     <tr key={idx} className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
+                       <td className="px-6 py-4 font-bold text-slate-800 font-mono">{order.PEDIDO || order.PI || "S/N"}</td>
+                       <td className="px-6 py-4"><span className="bg-indigo-50 text-indigo-600 px-2 py-1 rounded text-xs font-bold border border-indigo-100">{order.STATUS}</span></td>
+                       <td className="px-6 py-4 font-medium text-slate-500">{order.entryDateIso ? new Date(order.entryDateIso).toLocaleDateString('pt-BR') : '-'}</td>
+                       <td className="px-6 py-4 text-right"><span className={`px-3 py-1 rounded-full text-xs font-black ${order.daysOpen > metaSlaDias ? 'bg-red-100 text-red-600' : 'bg-orange-100 text-orange-600'}`}>{order.daysOpen} dias</span></td>
+                     </tr>
+                   ))
+                 ) : (
+                   <tr><td colSpan="4" className="px-6 py-10 text-center text-slate-400 font-medium italic">Nenhum pedido pendente encontrado no filtro aplicado.</td></tr>
+                 )}
+               </tbody>
+             </table>
+           </div>
         </div>
       </div>
     );
@@ -1112,192 +1100,119 @@ const App = () => {
 
   const renderInterfaceView = () => {
     if (!interfaceAnalysis) return null;
-
     const views = {
-      aguardandoRetirada: { title: "Aguardando Retirada de Material", data: interfaceAnalysis.aguardandoRetirada, color: "text-blue-600", bg: "bg-blue-50" },
-      aguardandoArrecadacao: { title: "Aguardando Arrecadação OMS", data: interfaceAnalysis.aguardandoArrecadacao, color: "text-orange-600", bg: "bg-orange-50" },
-      arrecadadoOms: { title: "Arrecadado pela OMS", data: interfaceAnalysis.arrecadadoOms, color: "text-emerald-600", bg: "bg-emerald-50" },
-      falhasInterface: { title: "Falhas de Interface Sistêmica", data: interfaceAnalysis.falhasInterface, color: "text-red-600", bg: "bg-red-50" }
+      aguardandoRetirada: { title: "Aguardando Retirada de Material", data: interfaceAnalysis.aguardandoRetirada, color: "text-blue-600", bg: "bg-blue-50", desc: "Pedidos em trânsito no SINGRA e conferidos no WMS." },
+      aguardandoArrecadacao: { title: "Aguardando Arrecadação OMS", data: interfaceAnalysis.aguardandoArrecadacao, color: "text-orange-600", bg: "bg-orange-50", desc: "Expedidos fisicamente, mas sem baixa no SINGRA." },
+      arrecadadoOms: { title: "Arrecadado pela OMS", data: interfaceAnalysis.arrecadadoOms, color: "text-emerald-600", bg: "bg-emerald-50", desc: "Finalizados com sucesso nos dois sistemas." },
+      falhasInterface: { title: "Falhas de Interface Sistêmica", data: interfaceAnalysis.falhasInterface, color: "text-red-600", bg: "bg-red-50", desc: "Divergências críticas onde os status não coincidem logicamente." }
     };
-
     const currentList = views[activeInterfaceView].data;
-    
     const displayedList = activeInterfaceView === 'falhasInterface' && selectedErrorFilter
         ? currentList.filter(item => `${item.STATUS || 'N/A'}-${item.singraStatus || 'N/A'}` === selectedErrorFilter)
         : currentList;
-
     return (
       <div className="space-y-6 animate-in fade-in zoom-in duration-300">
-        
-        <div className="bg-white p-6 rounded-[32px] border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6">
+        <div className="bg-white p-6 rounded-[32px] border border-slate-200 shadow-sm flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="flex-1">
-            <h3 className="text-sm font-black text-slate-700 uppercase tracking-wider flex items-center gap-2 mb-1">
-              <Calendar size={16} className="text-indigo-500" /> Filtro de Período (Arrecadados OMS)
-            </h3>
+            <h3 className="text-sm font-black text-slate-700 uppercase tracking-wider flex items-center gap-2 mb-1"><Calendar size={16} className="text-indigo-500" /> Filtro de Período (Arrecadados OMS)</h3>
             <p className="text-xs text-slate-500 font-medium">
               Como os pedidos "Arrecadados" não constam mais no SINGRA, nós filtramos a busca por data de entrada para não travar o sistema com o histórico completo de 5 anos. <span className="text-indigo-500 font-bold">Os demais status ("Descasados", "Em Trânsito") não sofrem esse filtro para garantir que nenhum erro antigo seja esquecido.</span>
             </p>
           </div>
           <div className="flex items-center gap-4">
-            <div>
-              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Data Inicial</label>
-              <input type="date" value={interfaceStartDate} onChange={e => setInterfaceStartDate(e.target.value)} className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 outline-none focus:border-indigo-500 transition-colors" />
-            </div>
-            <div>
-              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Data Final</label>
-              <input type="date" value={interfaceEndDate} onChange={e => setInterfaceEndDate(e.target.value)} className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 outline-none focus:border-indigo-500 transition-colors" />
-            </div>
+            <input type="date" value={interfaceStartDate} onChange={e => setInterfaceStartDate(e.target.value)} className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold shadow-sm" />
+            <input type="date" value={interfaceEndDate} onChange={e => setInterfaceEndDate(e.target.value)} className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold shadow-sm" />
           </div>
         </div>
-
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <button onClick={() => { setActiveInterfaceView('aguardandoRetirada'); setSelectedErrorFilter(null); }} className={`text-left p-6 rounded-3xl shadow-sm border-2 transition-all ${activeInterfaceView === 'aguardandoRetirada' ? 'border-blue-400 bg-white' : 'border-transparent bg-blue-50 opacity-70 hover:opacity-100'}`}>
-            <p className="text-blue-500 text-[10px] font-black uppercase tracking-widest mb-1 line-clamp-1">Aguardando Retirada</p>
-            <p className="text-3xl font-black text-slate-800">{interfaceAnalysis.aguardandoRetirada.length}</p>
-            <p className="text-xs text-slate-500 mt-2 font-medium">Singra (Trânsito) + WMS (Conferido)</p>
-          </button>
-          <button onClick={() => { setActiveInterfaceView('aguardandoArrecadacao'); setSelectedErrorFilter(null); }} className={`text-left p-6 rounded-3xl shadow-sm border-2 transition-all ${activeInterfaceView === 'aguardandoArrecadacao' ? 'border-orange-400 bg-white' : 'border-transparent bg-orange-50 opacity-70 hover:opacity-100'}`}>
-            <p className="text-orange-500 text-[10px] font-black uppercase tracking-widest mb-1 line-clamp-1">Aguar. Arrecadação</p>
-            <p className="text-3xl font-black text-slate-800">{interfaceAnalysis.aguardandoArrecadacao.length}</p>
-            <p className="text-xs text-slate-500 mt-2 font-medium">Singra (Trânsito) + WMS (Expedido)</p>
-          </button>
-          <button onClick={() => { setActiveInterfaceView('arrecadadoOms'); setSelectedErrorFilter(null); }} className={`text-left p-6 rounded-3xl shadow-sm border-2 transition-all ${activeInterfaceView === 'arrecadadoOms' ? 'border-emerald-400 bg-white' : 'border-transparent bg-emerald-50 opacity-70 hover:opacity-100'}`}>
-            <p className="text-emerald-500 text-[10px] font-black uppercase tracking-widest mb-1 line-clamp-1">Arrecadado OMS</p>
-            <p className="text-3xl font-black text-slate-800">{interfaceAnalysis.arrecadadoOms.length}</p>
-            <p className="text-xs text-emerald-600 mt-2 font-bold bg-emerald-100 inline-block px-2 py-0.5 rounded-full">No período filtrado</p>
-          </button>
-          <button onClick={() => { setActiveInterfaceView('falhasInterface'); setSelectedErrorFilter(null); }} className={`text-left p-6 rounded-3xl shadow-sm border-2 transition-all ${activeInterfaceView === 'falhasInterface' ? 'border-red-400 bg-white' : 'border-transparent bg-red-50 opacity-70 hover:opacity-100'}`}>
-            <p className="text-red-500 text-[10px] font-black uppercase tracking-widest mb-1 line-clamp-1">Falha de Interface</p>
-            <p className="text-3xl font-black text-red-600">{interfaceAnalysis.falhasInterface.length}</p>
-            <p className="text-xs text-slate-500 mt-2 font-medium text-red-400">Status não correspondem</p>
-          </button>
-        </div>
-
-        <div className="bg-white p-6 rounded-[32px] shadow-sm border border-slate-200">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-            <div>
-              <h3 className={`text-xl font-black flex items-center gap-2 ${views[activeInterfaceView].color}`}>
-                <ArrowRightLeft size={24} /> {views[activeInterfaceView].title}
-              </h3>
-              <p className="text-sm text-slate-500 font-medium mt-1">Mostrando {displayedList.length} pedidos encontrados.</p>
-            </div>
-            <button onClick={() => handleDownloadExcel(displayedList, `Relatorio_Interface_${activeInterfaceView}`)} disabled={displayedList.length === 0} className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-600 rounded-xl text-sm font-bold hover:bg-indigo-100 disabled:opacity-50">
-              <Download size={16} /> Exportar para Excel
+          {Object.entries(views).map(([key, view]) => (
+            <button key={key} onClick={() => { setActiveInterfaceView(key); setSelectedErrorFilter(null); }} className={`text-left p-6 rounded-3xl border-2 transition-all ${activeInterfaceView === key ? 'border-indigo-400 bg-white shadow-sm scale-105' : 'border-transparent ' + view.bg + ' opacity-70 hover:opacity-100'}`}>
+              <div className="flex items-center justify-between mb-1">
+                 <p className={`text-[10px] font-black uppercase ${view.color}`}>{view.title.split(' ')[0]}...</p>
+                 <InfoButton title={view.title} description={view.desc} />
+              </div>
+              <p className="text-3xl font-black text-slate-800">{view.data.length}</p>
             </button>
-          </div>
-
-          {activeInterfaceView === 'falhasInterface' && currentList.length > 0 && (
-            <div className="mb-6 bg-slate-50 p-4 rounded-2xl border border-slate-100">
-              <h4 className="text-xs font-black text-slate-500 uppercase tracking-wider mb-3">Resumo das Falhas de Interface (Clique para filtrar)</h4>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-                {Object.values(currentList.reduce((acc, item) => {
-                    const key = `${item.STATUS || 'N/A'}-${item.singraStatus || 'N/A'}`;
-                    if (!acc[key]) acc[key] = { key, wms: item.STATUS || 'N/A', singra: item.singraStatus || 'N/A', count: 0 };
-                    acc[key].count++;
-                    return acc;
-                }, {})).sort((a,b) => b.count - a.count).map((sum, idx) => (
-                    <div 
-                      key={idx} 
-                      onClick={() => setSelectedErrorFilter(sum.key === selectedErrorFilter ? null : sum.key)}
-                      className={`p-3 rounded-xl flex items-center justify-between shadow-sm cursor-pointer transition-all ${selectedErrorFilter === sum.key ? 'bg-red-50 border-2 border-red-500 scale-[1.02]' : 'bg-white border border-red-100 hover:border-red-300'}`}
-                    >
-                        <div>
-                            <p className="text-[9px] font-bold text-slate-400 uppercase">WMS: <span className="text-indigo-600 font-black">{sum.wms}</span></p>
-                            <p className="text-[9px] font-bold text-slate-400 uppercase">SINGRA: <span className="text-slate-800 font-black">{sum.singra}</span></p>
-                        </div>
-                        <div className={`text-base font-black px-2 py-1 rounded-lg ${selectedErrorFilter === sum.key ? 'text-white bg-red-500' : 'text-red-600 bg-red-50'}`}>
-                            {sum.count}
-                        </div>
+          ))}
+        </div>
+        <div className="bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm">
+           <div className="flex justify-between items-center mb-6">
+             <h3 className={`text-xl font-black flex items-center gap-2 ${views[activeInterfaceView].color}`}><ArrowRightLeft size={24} /> {views[activeInterfaceView].title}</h3>
+             <button onClick={() => handleDownloadExcel(displayedList, `Interface_${activeInterfaceView}`)} className="bg-indigo-50 text-indigo-600 px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-indigo-100 transition-colors shadow-sm"><Download size={16} /> Exportar Excel</button>
+           </div>
+           {activeInterfaceView === 'falhasInterface' && (
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-6">
+                 {Object.values(currentList.reduce((acc, item) => {
+                     const key = `${item.STATUS || 'N/A'}-${item.singraStatus || 'N/A'}`;
+                     if (!acc[key]) acc[key] = { key, wms: item.STATUS || 'N/A', singra: item.singraStatus || 'N/A', count: 0 };
+                     acc[key].count++;
+                     return acc;
+                 }, {})).map(s => (
+                    <div key={s.key} onClick={() => setSelectedErrorFilter(s.key === selectedErrorFilter ? null : s.key)} className={`p-3 rounded-xl border cursor-pointer transition-all ${selectedErrorFilter === s.key ? 'border-red-500 bg-red-50 shadow-md scale-105' : 'border-slate-100 bg-slate-50 hover:border-red-200'}`}>
+                       <p className="text-[9px] font-bold text-slate-400">WMS: {s.wms}</p>
+                       <p className="text-[9px] font-bold text-slate-400">SINGRA: {s.singra}</p>
+                       <p className="text-lg font-black text-red-600">{s.count}</p>
                     </div>
-                ))}
+                 ))}
               </div>
-            </div>
-          )}
-
-          {(activeInterfaceView !== 'falhasInterface' || selectedErrorFilter) && (
-            <>
-              {activeInterfaceView === 'falhasInterface' && selectedErrorFilter && (
-                <div className="mb-4 flex flex-col sm:flex-row sm:items-center justify-between bg-red-50/50 p-4 rounded-xl border border-red-100 animate-in fade-in slide-in-from-top-4">
-                  <span className="text-sm font-bold text-red-700 flex items-center gap-2 mb-2 sm:mb-0">
-                    <AlertTriangle size={16} /> Exibindo detalhamento para a falha selecionada ({displayedList.length} pedidos)
-                  </span>
-                  <button onClick={() => setSelectedErrorFilter(null)} className="text-xs font-bold text-slate-600 hover:text-slate-900 bg-white px-4 py-2 rounded-lg border border-slate-200 shadow-sm transition-colors flex items-center gap-2 w-fit">
-                    <X size={14}/> Fechar Tabela
-                  </button>
-                </div>
-              )}
-              <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
-                <table className="w-full text-sm text-left text-slate-600 animate-in fade-in duration-300">
-                  <thead className="text-xs text-slate-400 uppercase bg-slate-50 sticky top-0 z-10 shadow-sm">
-                    <tr><th className="px-6 py-4 rounded-tl-xl">Pedido / RM</th><th className="px-6 py-4">PI</th><th className="px-6 py-4">Status WMS</th><th className="px-6 py-4">Status SINGRA</th><th className="px-6 py-4 rounded-tr-xl">Data Entrada</th></tr>
-                  </thead>
-                  <tbody>
-                    {displayedList.length > 0 ? (
-                      displayedList.map((order, idx) => (
-                        <tr key={idx} className="border-b border-slate-50 hover:bg-slate-50">
-                          <td className="px-6 py-4 font-bold text-slate-800 font-mono">{order.PEDIDO || "S/N"}</td>
-                          <td className="px-6 py-4 font-medium text-slate-500">{order.PI || "-"}</td>
-                          <td className="px-6 py-4"><span className="bg-indigo-50 text-indigo-700 px-2 py-1 rounded-md text-xs font-bold border border-indigo-100">{order.STATUS || "N/A"}</span></td>
-                          <td className="px-6 py-4"><span className={`px-2 py-1 rounded-md text-xs font-bold border ${order.singraStatus === 'NÃO CONSTA NO SINGRA' ? 'bg-slate-100 text-slate-500 border-slate-200' : 'bg-slate-800 text-white border-slate-700'}`}>{order.singraStatus || "N/A"}</span></td>
-                          <td className="px-6 py-4 font-medium">{order.DATA_ENTRADA ? safeGetISODate(order.DATA_ENTRADA).split('-').reverse().join('/') : '-'}</td>
-                        </tr>
-                      ))
-                    ) : (
-                      <tr><td colSpan="5" className="px-6 py-10 text-center text-slate-400 font-medium">Nenhum pedido encontrado nesta classificação.</td></tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </>
-          )}
+           )}
+           <div className="overflow-x-auto max-h-[400px]">
+             <table className="w-full text-sm text-left text-slate-600">
+               <thead className="bg-slate-50 text-slate-400 uppercase text-xs sticky top-0 z-10">
+                 <tr><th className="px-6 py-4">Pedido / RM</th><th className="px-6 py-4">PI</th><th className="px-6 py-4">Status WMS</th><th className="px-6 py-4">Status SINGRA</th><th className="px-6 py-4">Data Entrada</th></tr>
+               </thead>
+               <tbody>
+                 {displayedList.map((o, i) => (
+                   <tr key={i} className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
+                     <td className="px-6 py-4 font-bold text-slate-800 font-mono">{o.PEDIDO || "S/N"}</td>
+                     <td className="px-6 py-4 font-medium text-slate-500">{o.PI || "-"}</td>
+                     <td className="px-6 py-4"><span className="bg-indigo-50 text-indigo-700 px-2 py-1 rounded text-xs font-bold border border-indigo-100">{o.STATUS || "N/A"}</span></td>
+                     <td className="px-6 py-4"><span className={`px-2 py-1 rounded text-xs font-bold border ${o.singraStatus === 'NÃO CONSTA NO SINGRA' ? 'bg-slate-100 text-slate-500' : 'bg-slate-800 text-white'}`}>{o.singraStatus || "N/A"}</span></td>
+                     <td className="px-6 py-4 font-medium">{o.DATA_ENTRADA ? safeGetISODate(o.DATA_ENTRADA).split('-').reverse().join('/') : '-'}</td>
+                   </tr>
+                 ))}
+               </tbody>
+             </table>
+           </div>
         </div>
       </div>
     );
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans text-slate-900 overflow-x-hidden pb-20">
-      <div className="w-full px-4 py-4 md:px-10 md:py-8 transition-all duration-300">
+    <div className="min-h-screen bg-slate-50 font-sans text-slate-900 pb-20 overflow-x-hidden">
+      <div className="w-full px-4 py-4 md:px-10 md:py-8 transition-all">
         <header className="mb-8 flex flex-col gap-6">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="bg-indigo-600 p-2.5 rounded-2xl shadow-lg"><Activity className="text-white" size={24} /></div>
+            <div className="flex items-center gap-3 group">
+              <div className="bg-indigo-600 p-2.5 rounded-2xl shadow-lg transition-transform group-hover:scale-110"><Activity className="text-white" size={24} /></div>
               <div>
                 <h1 className="text-2xl font-black text-slate-800 tracking-tight">Supply Chain <span className="text-indigo-600">DepFMRJ</span></h1>
                 <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">WMS & Integração Singra</p>
               </div>
             </div>
-            
             <div className="flex flex-col items-end gap-2">
               <div className="flex items-center gap-3">
-                <button onClick={() => performSync(true)} disabled={loading || !libLoaded} className="cursor-pointer px-6 py-2.5 rounded-xl font-bold transition-all flex items-center gap-2 shadow-sm bg-indigo-600 border border-indigo-600 text-white hover:bg-indigo-700 text-sm disabled:opacity-50">
+                <button onClick={() => performSync(true)} disabled={loading} className="px-6 py-2.5 rounded-xl font-bold bg-indigo-600 text-white shadow-sm flex items-center gap-2 hover:bg-indigo-700 transition-all text-sm disabled:opacity-50 active:scale-95">
                   {loading ? <Loader2 size={18} className="animate-spin" /> : <RefreshCw size={18} />} Sincronizar Robôs
                 </button>
-                <label className="cursor-pointer px-6 py-2.5 rounded-xl font-bold transition-all flex items-center gap-2 shadow-sm bg-white border border-slate-200 hover:border-indigo-500 hover:text-indigo-600 text-sm disabled:opacity-50">
+                <label className="px-6 py-2.5 rounded-xl font-bold bg-white border border-slate-200 shadow-sm flex items-center gap-2 hover:border-indigo-500 hover:text-indigo-600 transition-all text-sm cursor-pointer active:scale-95">
                   <Upload size={18} /> {fileName || "Upload Manual"}
-                  <input type="file" className="hidden" accept=".xlsx, .xls, .csv" onChange={handleFileUpload} disabled={!libLoaded || loading} />
+                  <input type="file" className="hidden" onChange={handleFileUpload} />
                 </label>
               </div>
               {lastSync && (
-                <div className="text-[11px] text-slate-500 font-bold flex items-center gap-1.5 bg-slate-200/50 px-3 py-1.5 rounded-lg border border-slate-200 shadow-sm animate-in fade-in">
-                  <Clock size={12} className="text-indigo-500" />
-                  Última atualização: <span className="text-slate-700">{lastSync}</span>
+                <div className="text-[11px] text-slate-500 font-bold flex items-center gap-1.5 bg-slate-200/50 px-3 py-1.5 rounded-lg border border-slate-200 shadow-sm">
+                  <Clock size={12} className="text-indigo-500" /> Última atualização: <span className="text-slate-700">{lastSync}</span>
                 </div>
               )}
             </div>
           </div>
-
           {data.length > 0 && (
-            <div className="flex p-1 bg-white rounded-2xl border border-slate-200 w-fit shadow-sm self-center md:self-start overflow-x-auto max-w-full">
-              <button onClick={() => setActiveTab('dashboard')} className={`px-6 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === 'dashboard' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}>
-                <LayoutDashboard size={16} /> Histórico & Fluxo
-              </button>
-              <button onClick={() => setActiveTab('backlog')} className={`px-6 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === 'backlog' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}>
-                <Hourglass size={16} /> Backlog & Saúde
-              </button>
-              <button onClick={() => setActiveTab('interface')} className={`px-6 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === 'interface' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}>
-                <Network size={16} /> Interface SINGRA x WMS
-              </button>
+            <div className="flex p-1 bg-white rounded-2xl border border-slate-200 w-fit shadow-sm overflow-x-auto max-w-full">
+              <button onClick={() => setActiveTab('dashboard')} className={`px-6 py-2 rounded-xl text-sm font-bold flex items-center gap-2 whitespace-nowrap transition-all ${activeTab === 'dashboard' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}><LayoutDashboard size={16} /> Histórico & Fluxo</button>
+              <button onClick={() => setActiveTab('backlog')} className={`px-6 py-2 rounded-xl text-sm font-bold flex items-center gap-2 whitespace-nowrap transition-all ${activeTab === 'backlog' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}><Hourglass size={16} /> Backlog & Saúde</button>
+              <button onClick={() => setActiveTab('interface')} className={`px-6 py-2 rounded-xl text-sm font-bold flex items-center gap-2 whitespace-nowrap transition-all ${activeTab === 'interface' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}><Network size={16} /> Interface SINGRA x WMS</button>
             </div>
           )}
         </header>
@@ -1307,14 +1222,12 @@ const App = () => {
           activeTab === 'backlog' ? renderBacklogAnalysis() : 
           activeTab === 'interface' ? renderInterfaceView() : null
         ) : (
-          <div className="mt-32 flex flex-col items-center justify-center text-center">
-            <div className={`w-40 h-40 bg-white rounded-[50px] shadow-2xl flex items-center justify-center mb-8 border border-slate-100 ${loading ? 'animate-pulse' : ''}`}>
-              {loading ? <Loader2 size={60} className="text-indigo-500 animate-spin" /> : <Database size={60} className="text-indigo-500 opacity-20" />}
-            </div>
-            <h2 className="text-2xl font-black text-slate-800 tracking-tight">Supply Monitor Integrado</h2>
-            <p className="text-slate-400 text-sm max-w-sm mt-2 font-medium">
-              {loading ? "Sincronizando dados com a nuvem..." : "Aguarde o carregamento ou clique em Sincronizar Robôs."}
-            </p>
+          <div className="mt-32 text-center flex flex-col items-center animate-pulse">
+             <div className={`w-40 h-40 bg-white rounded-[50px] shadow-2xl flex items-center justify-center mb-8 border border-slate-100`}>
+               {loading ? <Loader2 size={60} className="text-indigo-500 animate-spin" /> : <Database size={60} className="text-indigo-500 opacity-20" />}
+             </div>
+             <h2 className="text-2xl font-black text-slate-800 tracking-tight">Supply Monitor Integrado</h2>
+             <p className="text-slate-400 text-sm mt-2 font-medium">Aguarde o carregamento ou clique em Sincronizar Robôs.</p>
           </div>
         )}
       </div>
