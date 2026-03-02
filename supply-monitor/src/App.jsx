@@ -701,7 +701,7 @@ const App = () => {
       const genAI = new GoogleGenerativeAI(apiKey);
       
       // Usa o modelo recomendado atual
-      const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+      const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
       
       // Envia a requisição
       const result = await model.generateContent(userQuery);
