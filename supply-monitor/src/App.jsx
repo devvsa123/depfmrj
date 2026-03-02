@@ -91,27 +91,19 @@ const App = () => {
   });
 
   // =========================================================================
-  // ⚠️ SEGURANÇA: CONFIGURAÇÃO DA CHAVE DA API PARA A VERCEL
-  // Para manter seu GitHub seguro, a Vercel vai injetar a chave aqui.
-  // IMPORTANTE: Se você usar VITE, a Vercel exige o prefixo VITE_.
+  // ⚠️ SEGURANÇA: LEITURA DA CHAVE DA API
   // =========================================================================
   let apiKey = "";
-  try {
-    // Tenta pegar a variável de ambiente (Funciona na Vercel com Vite ou CRA)
-    // Descomente a linha abaixo e remova a debaixo se usar VITE na Vercel:
-    // apiKey = import.meta.env.VITE_GEMINI_API_KEY; 
-    
-    // Padrão React App convencional:
-    if (typeof process !== 'undefined' && process.env) {
-       apiKey = process.env.REACT_APP_GEMINI_API_KEY || "";
-    }
-  } catch(e) {
-    console.warn("Ambiente não suporta variáveis automáticas.");
+  
+  // 1. Tenta Create React App ou Next.js (process.env)
+  if (typeof process !== 'undefined' && process.env) {
+      apiKey = process.env.REACT_APP_GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY || "";
   }
-  // Cole sua chave abaixo APENAS para testes locais na sua máquina, 
-  // APAGUE antes de enviar para o GitHub:
+
+  // 2. Fallback manual (NÃO RECOMENDADO PARA GITHUB PÚBLICO)
+  // Se nada funcionar e você precisar testar rápido, cole a chave aqui:
   if (!apiKey) {
-      apiKey = ""; // Coloque a chave AIzaSy... aqui para teste local.
+      apiKey = ""; // EX: "AIzaSy..."
   }
 
   useEffect(() => {
@@ -618,7 +610,6 @@ const App = () => {
 
   // ========================================================================================
   // MOTOR DE INTELIGÊNCIA ARTIFICIAL:
-  // Estrutura idêntica à que funcionava, com o prompt rico adicionado.
   // ========================================================================================
   const analyzeWithAI = async () => {
     if (!chartData || chartData.length === 0 || isAnalyzing || !selectionSummary) return;
@@ -693,7 +684,7 @@ const App = () => {
       `;
       
       if (!apiKey || apiKey.trim() === "") {
-          throw new Error("⚠️ A Chave da API (apiKey) não foi configurada. Insira sua chave nas variáveis de ambiente da Vercel.");
+          throw new Error("⚠️ A Chave da API (apiKey) não foi configurada. Insira sua chave no código (se rodando localmente) ou nas variáveis de ambiente da Vercel.");
       }
 
       const response = await fetch(
