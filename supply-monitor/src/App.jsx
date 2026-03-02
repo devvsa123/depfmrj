@@ -480,7 +480,7 @@ const App = () => {
 
     let expedidosTotal = 0;
     let expedidosNoPrazo = 0;
-    const metaSlaDias = 2;
+    const metaSlaDias = 15;
 
     data.forEach(item => {
       const sepDateStr = safeGetISODate(item.DATA_SEPARACAO);
