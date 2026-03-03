@@ -1150,7 +1150,9 @@ const App = () => {
         <div className="bg-white p-6 rounded-[32px] border border-slate-200 shadow-sm flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="flex-1">
             <h3 className="text-sm font-black text-slate-700 uppercase tracking-wider flex items-center gap-2 mb-1"><Calendar size={16} className="text-indigo-500" /> Filtro de Período (Arrecadados OMS)</h3>
-            <p className="text-xs text-slate-500 font-medium">Filtro operacional para exibição de pedidos já finalizados.</p>
+            <p className="text-xs text-slate-500 font-medium">
+              Como os pedidos "Arrecadados" não constam mais no SINGRA, nós filtramos a busca por data de entrada para não travar o sistema com o histórico completo de 5 anos. <span className="text-indigo-500 font-bold">Os demais status ("Descasados", "Em Trânsito") não sofrem esse filtro para garantir que nenhum erro antigo seja esquecido.</span>
+            </p>
           </div>
           <div className="flex items-center gap-4">
             <input type="date" value={interfaceStartDate} onChange={e => setInterfaceStartDate(e.target.value)} className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold shadow-sm" />
