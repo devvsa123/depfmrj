@@ -1171,11 +1171,11 @@ const App = () => {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           {Object.entries(views).map(([key, view]) => (
             <button key={key} onClick={() => { setActiveInterfaceView(key); setSelectedErrorFilter(null); }} className={`text-left p-6 rounded-3xl border-2 transition-all ${activeInterfaceView === key ? 'border-indigo-400 bg-white shadow-sm scale-105' : 'border-transparent ' + view.bg + ' opacity-70 hover:opacity-100'}`}>
-              <div className="flex items-center justify-between mb-1">
-                 <p className={`text-[10px] font-black uppercase ${view.color}`}>{view.title.split(' ')[0]}...</p>
+              <div className="flex items-center justify-between gap-2 mb-1">
+                 <p className={`text-[10px] font-black uppercase leading-tight ${view.color}`}>{view.title}</p>
                  <InfoButton title={view.title} description={view.desc} />
               </div>
-              <p className="text-3xl font-black text-slate-800">{view.data.length}</p>
+              <p className="text-3xl font-black text-slate-800 mt-2">{view.data.length}</p>
             </button>
           ))}
         </div>
