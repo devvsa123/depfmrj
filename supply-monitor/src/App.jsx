@@ -33,7 +33,7 @@ const STATUS_COLOR_MAP = {
 
 const getStatusColor = (status) => {
   const normalized = String(status || "").toUpperCase().trim();
-  return STATUS_COLOR_MAP[normalized] || '#94a3b8'; // Cor padrão caso não mapeado
+  return STATUS_COLOR_MAP[normalized] || '#94a3b8'; 
 };
 
 // --- UTILITÁRIOS DE CACHE (IndexedDB) ---
@@ -85,7 +85,6 @@ const getFromCache = async (key) => {
 // --- COMPONENTE DE EXPLICAÇÃO (TOOLTIP) ---
 const InfoButton = ({ title, description }) => {
   const [isOpen, setIsOpen] = useState(false);
-
   return (
     <div className="relative inline-block ml-1">
       <button 
@@ -124,12 +123,13 @@ const App = () => {
   const [selectedBucket, setSelectedBucket] = useState(null);
   const [selectedPiSegment, setSelectedPiSegment] = useState(null); 
 
-  const [visibleRange, setVisibleRange] = useState({ startIndex: 0, endIndex: 0 });
+  // Correção de Inicialização: O estado default agora é `null` para assumir o tamanho completo dos dados
+  const [visibleRange, setVisibleRange] = useState(null);
+  
   const [aiAnalysis, setAiAnalysis] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [aiError, setAiError] = useState("");
 
-  // Filtros de Data para Interface
   const [interfaceStartDate, setInterfaceStartDate] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() - 30); 
@@ -139,7 +139,6 @@ const App = () => {
     return new Date().toISOString().split('T')[0];
   });
 
-  // Filtros de Data para Backlog (Liberação/Entrada)
   const [backlogStartDate, setBacklogStartDate] = useState("");
   const [backlogEndDate, setBacklogEndDate] = useState("");
 
@@ -479,14 +478,23 @@ const App = () => {
     });
   }, [data]);
 
+  // Sempre que chartData mudar (novos dados syncados), resetamos o filtro visível para mostrar tudo
+  useEffect(() => {
+    setVisibleRange(null);
+  }, [chartData]);
+
   const visibleRangeData = useMemo(() => {
     if (!chartData.length) return [];
+    if (!visibleRange) return chartData; // Retorna tudo se não houver filtro ativo
     return chartData.slice(visibleRange.startIndex, visibleRange.endIndex + 1);
   }, [chartData, visibleRange]);
 
   const selectionSummary = useMemo(() => {
     if (chartData.length === 0) return null;
-    const viewSlice = chartData.slice(visibleRange.startIndex, visibleRange.endIndex + 1);
+    const startIndex = visibleRange ? visibleRange.startIndex : 0;
+    const endIndex = visibleRange ? visibleRange.endIndex : chartData.length - 1;
+    const viewSlice = chartData.slice(startIndex, endIndex + 1);
+    
     const entradas = viewSlice.reduce((acc, curr) => acc + (curr.entradas || 0), 0);
     const separacoes = viewSlice.reduce((acc, curr) => acc + (curr.separacoes || 0), 0);
     const validDaysSlice = viewSlice.filter(d => d.leadTimeDaily > 0);
@@ -496,8 +504,11 @@ const App = () => {
 
   const slaAnalysis = useMemo(() => {
     if (data.length === 0 || chartData.length === 0) return { taxaNoPrazo: 0 };
-    const startDate = new Date(chartData[visibleRange.startIndex]?.date);
-    const endDate = new Date(chartData[visibleRange.endIndex]?.date);
+    const startIndex = visibleRange ? visibleRange.startIndex : 0;
+    const endIndex = visibleRange ? visibleRange.endIndex : chartData.length - 1;
+    
+    const startDate = new Date(chartData[startIndex]?.date);
+    const endDate = new Date(chartData[endIndex]?.date);
 
     let expedidosTotal = 0;
     let expedidosNoPrazo = 0;
@@ -525,8 +536,11 @@ const App = () => {
 
   const dynamicAnalysis = useMemo(() => {
     if (data.length === 0 || chartData.length === 0) return { monthly: [], piStats: { delivered: 0, cancelled: 0, totalUnique: 0 } };
-    const startDate = new Date(chartData[visibleRange.startIndex]?.date);
-    const endDate = new Date(chartData[visibleRange.endIndex]?.date);
+    const startIndex = visibleRange ? visibleRange.startIndex : 0;
+    const endIndex = visibleRange ? visibleRange.endIndex : chartData.length - 1;
+    const startDate = new Date(chartData[startIndex]?.date);
+    const endDate = new Date(chartData[endIndex]?.date);
+    
     const filteredRaw = data.filter(item => {
       const d = safeGetISODate(item.DATA_ENTRADA);
       if (!d) return false;
@@ -618,7 +632,6 @@ const App = () => {
     });
     const statusChartData = Object.entries(statusDist).map(([name, value]) => ({ name, value }));
 
-    // Garante que a ordem dos status seja consistente para o BarChart
     const uniqueStatuses = Array.from(uniqueStatusesSet).sort();
 
     return {
@@ -627,7 +640,6 @@ const App = () => {
     };
   }, [data, backlogStartDate, backlogEndDate]);
 
-  // --- MOTOR DE IA ---
   const analyzeWithAI = async () => {
     if (!chartData || chartData.length === 0 || isAnalyzing || !selectionSummary) return;
     setIsAnalyzing(true);
@@ -660,9 +672,12 @@ const App = () => {
 
   const renderPiDetailsModal = () => {
     if (!selectedPiSegment) return null;
-    const startDate = new Date(chartData[visibleRange.startIndex]?.date);
-    const endDate = new Date(chartData[visibleRange.endIndex]?.date);
+    const startIndex = visibleRange ? visibleRange.startIndex : 0;
+    const endIndex = visibleRange ? visibleRange.endIndex : chartData.length - 1;
+    const startDate = new Date(chartData[startIndex]?.date);
+    const endDate = new Date(chartData[endIndex]?.date);
     const targetType = selectedPiSegment; 
+    
     const filteredList = data.filter(item => {
       const d = safeGetISODate(item.DATA_ENTRADA);
       if (!d) return false;
@@ -672,8 +687,10 @@ const App = () => {
       if (!item.PI) return false; 
       return targetType === 'cancelled' ? status === "CANCELADO" : status === "EXPEDIDO";
     });
+    
     const title = targetType === 'cancelled' ? 'PIs Cancelados no Período' : 'PIs Entregues no Período';
     const colorClass = targetType === 'cancelled' ? 'text-red-600' : 'text-emerald-600';
+    
     return (
       <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4" onClick={() => setSelectedPiSegment(null)}>
         <div className="bg-white w-full max-w-4xl max-h-[80vh] rounded-[32px] shadow-2xl flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
@@ -743,6 +760,11 @@ const App = () => {
 
   const renderDashboard = () => {
     const estimativaZerarFila = selectionSummary?.mediaSeparacoesPeriodo > 0 ? (backlogAnalysis?.totalPending / selectionSummary.mediaSeparacoesPeriodo).toFixed(1) : "N/A";
+    
+    // Calcula corretamente as datas para exibição baseada na nulidade do visibleRange
+    const startIdx = visibleRange ? visibleRange.startIndex : 0;
+    const endIdx = visibleRange ? visibleRange.endIndex : chartData.length - 1;
+
     return (
       <div className="space-y-6 animate-in fade-in zoom-in duration-300">
         {renderPiDetailsModal()}
@@ -821,8 +843,8 @@ const App = () => {
                <InfoButton title="Seleção de Período" description="Arraste as alças para filtrar o intervalo de tempo que deseja analisar nos gráficos e indicadores acima." />
             </div>
             <div className="text-sm font-semibold text-slate-600">
-              {chartData[visibleRange.startIndex]?.date && chartData[visibleRange.endIndex]?.date && (
-                <>{new Date(chartData[visibleRange.startIndex].date).toLocaleDateString('pt-BR')} — {new Date(chartData[visibleRange.endIndex].date).toLocaleDateString('pt-BR')}</>
+              {chartData[startIdx]?.date && chartData[endIdx]?.date && (
+                <>{new Date(chartData[startIdx].date).toLocaleDateString('pt-BR')} — {new Date(chartData[endIdx].date).toLocaleDateString('pt-BR')}</>
               )}
             </div>
           </div>
@@ -830,7 +852,20 @@ const App = () => {
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={chartData}>
                 <XAxis dataKey="date" hide />
-                <Brush dataKey="date" height={35} stroke="#cbd5e1" fill="#f1f5f9" travellerWidth={12} onChange={(r) => r && setVisibleRange({startIndex: r.startIndex, endIndex: r.endIndex})} />
+                <Brush 
+                  dataKey="date" 
+                  height={35} 
+                  stroke="#cbd5e1" 
+                  fill="#f1f5f9" 
+                  travellerWidth={12} 
+                  startIndex={startIdx}
+                  endIndex={endIdx}
+                  onChange={(r) => {
+                    if (r && r.startIndex !== undefined && r.endIndex !== undefined) {
+                      setVisibleRange({startIndex: r.startIndex, endIndex: r.endIndex});
+                    }
+                  }} 
+                />
               </ComposedChart>
             </ResponsiveContainer>
           </div>
@@ -952,7 +987,7 @@ const App = () => {
               <Calendar size={16} className="text-indigo-500" /> Filtro por Data de Liberação (Entrada)
               <InfoButton title="Filtro de Backlog" description="Filtre os pedidos pendentes pela data em que deram entrada no sistema. O padrão exibe o total acumulado." />
             </h3>
-            <p className="text-xs text-slate-500 font-medium">Filtre para analisar o envelhecimento de pedidos de um período específico.</p>
+            <p className="text-xs text-slate-500 font-medium">Filtro para analisar o envelhecimento de pedidos de um período específico.</p>
           </div>
           <div className="flex items-center gap-4">
             <div className="relative">
@@ -1115,9 +1150,7 @@ const App = () => {
         <div className="bg-white p-6 rounded-[32px] border border-slate-200 shadow-sm flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="flex-1">
             <h3 className="text-sm font-black text-slate-700 uppercase tracking-wider flex items-center gap-2 mb-1"><Calendar size={16} className="text-indigo-500" /> Filtro de Período (Arrecadados OMS)</h3>
-            <p className="text-xs text-slate-500 font-medium">
-              Como os pedidos "Arrecadados" não constam mais no SINGRA, nós filtramos a busca por data de entrada para não travar o sistema com o histórico completo de 5 anos. <span className="text-indigo-500 font-bold">Os demais status ("Descasados", "Em Trânsito") não sofrem esse filtro para garantir que nenhum erro antigo seja esquecido.</span>
-            </p>
+            <p className="text-xs text-slate-500 font-medium">Filtro operacional para exibição de pedidos já finalizados.</p>
           </div>
           <div className="flex items-center gap-4">
             <input type="date" value={interfaceStartDate} onChange={e => setInterfaceStartDate(e.target.value)} className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold shadow-sm" />
