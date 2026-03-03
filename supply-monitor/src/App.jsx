@@ -301,7 +301,8 @@ const App = () => {
     setError("");
     setAiAnalysis("");
     setFileName(file.name);
-    setLastSync(new Date().toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }));
+    // Usa a data real em que o arquivo foi modificado no computador
+    setLastSync(new Date(file.lastModified).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }));
 
     const singra = await fetchSingraOnly();
     setSingraData(singra);
