@@ -262,7 +262,15 @@ const App = () => {
       });
 
       const normalizedSingra = await fetchSingraOnly();
-      const lastSyncTime = new Date().toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+      
+      // Calcula a data mais recente de modificação entre as planilhas do Vercel
+      let actualLastUpdate = new Date();
+      if (wmsMod || singraMod) {
+        const d1 = wmsMod ? new Date(wmsMod).getTime() : 0;
+        const d2 = singraMod ? new Date(singraMod).getTime() : 0;
+        actualLastUpdate = new Date(Math.max(d1, d2));
+      }
+      const lastSyncTime = actualLastUpdate.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
       
       setData(normalizedWms);
       setSingraData(normalizedSingra);
