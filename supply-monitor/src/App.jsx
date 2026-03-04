@@ -1051,7 +1051,7 @@ const App = () => {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           <div className="bg-white p-8 rounded-[40px] border border-slate-200">
             <div className="flex items-center justify-between mb-6">
-               <h3 className="text-lg font-black text-slate-800 flex items-center gap-2"><Activity className="text-indigo-500" /> Saúde do Fluxo (Aging por Status)</h3>
+               <h3 className="text-lg font-black text-slate-800 flex items-center gap-2"><Activity className="text-indigo-500" /> Pedidos em processamento (Fila de Espera)</h3>
                <InfoButton title="Aging por Status" description="Distribuição dos pedidos pendentes por tempo de abertura. Clique nas barras para listar detalhes." />
             </div>
             <div className="h-[350px] w-full">
