@@ -665,7 +665,7 @@ const App = () => {
       const userQuery = `Analise em formato executivo: Histórico Entradas ${totalEntradasHist}, Saídas ${totalSaidasHist}, Média ${mediaHistoricaSaidas}, Lead Time ${mediaLeadHistorico}. Período selecionado: Entradas ${selectionSummary.entradas}, Saídas ${selectionSummary.separacoes}, SLA ${slaAnalysis.taxaNoPrazo}%. Backlog: ${backlogAnalysis?.totalPending} pedidos. Interface: ${resumoErrosInterface} divergências.`;
 
       const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-preview-09-2025" });
+      const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
       const result = await model.generateContent({
         contents: [{ parts: [{ text: userQuery }] }],
         systemInstruction: { parts: [{ text: "Você é um consultor sênior de Supply Chain. Gere um diagnóstico operacional fluido, sem asteriscos ou tabelas, focado em ajudar o tomador de decisão. Use os rótulos originais: Entradas (Corte), Saídas (Corte), SLA (Até 20 dias)." }] }
