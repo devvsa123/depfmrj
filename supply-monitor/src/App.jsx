@@ -405,6 +405,9 @@ const App = () => {
       }
     });
 
+    // NOVO: Criamos um "mapa de memória" do WMS para saber quem já foi checado
+    const wmsMap = new Set();
+
     const results = {
       aguardandoRetirada: [],
       aguardandoArrecadacao: [],
@@ -419,6 +422,7 @@ const App = () => {
     const endFilter = new Date(interfaceEndDate);
     endFilter.setHours(23,59,59,999);
 
+    // 1ª ETAPA: Varredura Normal (WMS -> SINGRA)
     data.forEach(wmsItem => {
       const wmsStatusRaw = wmsItem.STATUS || "";
       const wStatus = normalizeString(wmsStatusRaw);
@@ -428,19 +432,27 @@ const App = () => {
       const pedidoOriginal = String(wmsItem.PEDIDO || wmsItem.RM || "").trim();
       const pedidoBusca = pedidoOriginal.replace(/^0+/, '').toUpperCase();
       
+      // Salva na memória que essa RM existe no WMS
+      wmsMap.add(pedidoBusca); 
+      
       const singraItem = singraMap[pedidoBusca];
       const sStatusRaw = singraItem ? (singraItem.SITUACAO || singraItem.STATUS) : "";
       const sStatus = normalizeString(sStatusRaw);
 
       const processedItem = { ...wmsItem, singraStatus: sStatusRaw || "NÃO CONSTA NO SINGRA" };
 
-      if (!singraItem && wStatus === "EXPEDIDO") {
-        const entryStr = safeGetISODate(wmsItem.DATA_ENTRADA);
-        if (entryStr) {
-          const entryDate = new Date(entryStr);
-          if (entryDate >= startFilter && entryDate <= endFilter) {
-            results.arrecadadoOms.push(processedItem);
+      if (!singraItem) {
+        if (wStatus === "EXPEDIDO") {
+          const entryStr = safeGetISODate(wmsItem.DATA_ENTRADA);
+          if (entryStr) {
+            const entryDate = new Date(entryStr);
+            if (entryDate >= startFilter && entryDate <= endFilter) {
+              results.arrecadadoOms.push(processedItem);
+            }
           }
+        } else {
+          // NOVO: RM está no WMS (presa/em processo) e SUMIU do Singra
+          results.falhasInterface.push(processedItem);
         }
         return; 
       }
@@ -464,6 +476,33 @@ const App = () => {
 
         if (!isCasado) {
           results.falhasInterface.push(processedItem);
+        }
+      }
+    });
+
+    // 2ª ETAPA: Varredura Reversa (SINGRA -> WMS)
+    // O que está no SINGRA pendente e não desceu pro WMS?
+    Object.values(singraMap).forEach(singraItem => {
+      const pedidoKey = singraItem.ID || singraItem.PEDIDO || singraItem.RM || singraItem.DOCUMENTO;
+      if (!pedidoKey) return;
+      
+      const safeKey = String(pedidoKey).replace(/^0+/, '').trim().toUpperCase();
+      
+      // Se essa RM NÃO foi vista durante o loop do WMS acima
+      if (!wmsMap.has(safeKey)) {
+        const sStatusRaw = singraItem.SITUACAO || singraItem.STATUS || "";
+        const sStatus = normalizeString(sStatusRaw);
+        
+        // Se no Singra ela está como Finalizada/Cancelada a gente ignora para não poluir.
+        // Focamos apenas nas que estão ATIVAS lá e sumidas no WMS:
+        if (sStatus === "EM ATENDIMENTO" || sStatus === "EM SEPARACAO" || sStatus === "EM EXPEDICAO" || sStatus === "EM TRANSITO") {
+           results.falhasInterface.push({
+             PEDIDO: pedidoKey,
+             PI: singraItem.PI || "-",
+             STATUS: "NÃO CONSTA NO WMS", // Cria um alerta visual forte na coluna do WMS
+             singraStatus: sStatusRaw,
+             DATA_ENTRADA: singraItem.DATA_ENTRADA || singraItem.DATA_CADASTRO || null 
+           });
         }
       }
     });
