@@ -14,6 +14,8 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 const XLSX_SCRIPT_URL = "https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js";
 const WMS_URL = "https://spxj2yln4kauap03.public.blob.vercel-storage.com/planilha_estoque.xls";
 const SINGRA_URL = "https://spxj2yln4kauap03.public.blob.vercel-storage.com/planilha_rms_unificada.csv";
+const [emailText, setEmailText] = useState("");
+const [extractedOrders, setExtractedOrders] = useState([]);
 
 // --- MAPEAMENTO PADRÃO DE CORES POR STATUS ---
 const STATUS_COLOR_MAP = {
@@ -162,6 +164,43 @@ const App = () => {
       performSync(false);
     }
   }, [libLoaded]);
+
+  useEffect(() => {
+    if (!emailText || data.length === 0) {
+      setExtractedOrders([]);
+      return;
+    }
+    
+    // Regex para buscar padrões como 12.345.678 ou 12345678
+    const regex = /\b(\d{2}\.\d{3}\.\d{3}|\d{8})\b/g;
+    const matches = emailText.match(regex) || [];
+    
+    // Remove duplicatas e tira os pontos para padronizar
+    const uniqueCleanIds = [...new Set(matches.map(m => m.replace(/\./g, '')))];
+    
+    // Cria um mapa rápido do Singra
+    const singraMap = {};
+    singraData.forEach(item => {
+      const p = String(item.ID || item.PEDIDO || item.RM || item.DOCUMENTO).replace(/^0+/, '').trim().toUpperCase();
+      if (p) singraMap[p] = item;
+    });
+
+    // Cruza os IDs encontrados com o WMS e o SINGRA
+    const results = uniqueCleanIds.map(id => {
+      const idBusca = id.replace(/^0+/, '').toUpperCase();
+      const wmsItem = data.find(d => String(d.PEDIDO || d.RM || "").trim().replace(/^0+/, '').toUpperCase() === idBusca);
+      const singraItem = singraMap[idBusca];
+      
+      return {
+        idOriginal: id,
+        wmsStatus: wmsItem ? wmsItem.STATUS : "NÃO LOCALIZADO",
+        singraStatus: singraItem ? (singraItem.SITUACAO || singraItem.STATUS) : "NÃO CONSTA",
+        dataEntrada: wmsItem && wmsItem.DATA_ENTRADA ? safeGetISODate(wmsItem.DATA_ENTRADA) : null
+      };
+    });
+    
+    setExtractedOrders(results);
+  }, [emailText, data, singraData]);
 
   const safeGetISODate = (val) => {
     if (!val) return null;
@@ -1222,7 +1261,72 @@ const App = () => {
       </div>
     );
   };
+const renderEmailSearch = () => {
+    return (
+      <div className="space-y-6 animate-in fade-in zoom-in duration-300">
+        <div className="bg-white p-6 rounded-[32px] border border-slate-200 shadow-sm">
+          <div className="flex items-center gap-2 mb-4">
+            <Search className="text-indigo-500" size={20} />
+            <h3 className="text-lg font-black text-slate-800">Extrator de RM por E-mail</h3>
+          </div>
+          <p className="text-sm text-slate-500 mb-4 font-medium">Cole o texto do e-mail abaixo. O sistema buscará automaticamente padrões numéricos de 8 dígitos (com ou sem ponto) e cruzará os status.</p>
+          <textarea
+            value={emailText}
+            onChange={(e) => setEmailText(e.target.value)}
+            placeholder="Cole o texto do e-mail aqui..."
+            className="w-full h-40 p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm text-slate-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all resize-none"
+          />
+        </div>
 
+        {extractedOrders.length > 0 && (
+          <div className="bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-lg font-black text-slate-800">Resultados Encontrados ({extractedOrders.length})</h3>
+              <button 
+                onClick={() => setEmailText("")} 
+                className="text-xs font-bold text-slate-400 hover:text-slate-700 bg-slate-100 px-3 py-1.5 rounded-lg transition-colors"
+              >
+                Limpar Busca
+              </button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-left text-slate-600">
+                <thead className="bg-slate-50 text-slate-400 uppercase text-xs">
+                  <tr>
+                    <th className="px-6 py-4 rounded-tl-xl">RM Extraída</th>
+                    <th className="px-6 py-4">Status WMS</th>
+                    <th className="px-6 py-4">Status SINGRA</th>
+                    <th className="px-6 py-4 rounded-tr-xl">Data Entrada</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {extractedOrders.map((res, idx) => (
+                    <tr key={idx} className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
+                      <td className="px-6 py-4 font-bold text-slate-800 font-mono">{res.idOriginal}</td>
+                      <td className="px-6 py-4">
+                         <span className={`px-2 py-1 rounded text-xs font-bold border ${res.wmsStatus === 'NÃO LOCALIZADO' ? 'bg-slate-100 text-slate-400 border-slate-200' : 'bg-indigo-50 text-indigo-700 border-indigo-100'}`}>
+                           {res.wmsStatus}
+                         </span>
+                      </td>
+                      <td className="px-6 py-4">
+                         <span className={`px-2 py-1 rounded text-xs font-bold border ${res.singraStatus === 'NÃO CONSTA' ? 'bg-slate-100 text-slate-400 border-slate-200' : 'bg-slate-800 text-white border-slate-700'}`}>
+                           {res.singraStatus}
+                         </span>
+                      </td>
+                      <td className="px-6 py-4 font-medium text-slate-500">
+                        {res.dataEntrada ? res.dataEntrada.split('-').reverse().join('/') : '-'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+  
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900 pb-20 overflow-x-hidden">
       <div className="w-full px-4 py-4 md:px-10 md:py-8 transition-all">
@@ -1257,6 +1361,7 @@ const App = () => {
               <button onClick={() => setActiveTab('dashboard')} className={`px-6 py-2 rounded-xl text-sm font-bold flex items-center gap-2 whitespace-nowrap transition-all ${activeTab === 'dashboard' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}><LayoutDashboard size={16} /> Indicadores</button>
               <button onClick={() => setActiveTab('backlog')} className={`px-6 py-2 rounded-xl text-sm font-bold flex items-center gap-2 whitespace-nowrap transition-all ${activeTab === 'backlog' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}><Hourglass size={16} /> RM em processamento</button>
               <button onClick={() => setActiveTab('interface')} className={`px-6 py-2 rounded-xl text-sm font-bold flex items-center gap-2 whitespace-nowrap transition-all ${activeTab === 'interface' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}><Network size={16} /> Interface SINGRA x WMS</button>
+              <button onClick={() => setActiveTab('email')} className={`px-6 py-2 rounded-xl text-sm font-bold flex items-center gap-2 whitespace-nowrap transition-all ${activeTab === 'email' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}><Search size={16} /> Busca por E-mail</button>
             </div>
           )}
         </header>
@@ -1264,7 +1369,8 @@ const App = () => {
         {data.length > 0 ? (
           activeTab === 'dashboard' ? renderDashboard() : 
           activeTab === 'backlog' ? renderBacklogAnalysis() : 
-          activeTab === 'interface' ? renderInterfaceView() : null
+          activeTab === 'interface' ? renderInterfaceView() : 
+          activeTab === 'email' ? renderEmailSearch() : null
         ) : (
           <div className="mt-32 text-center flex flex-col items-center animate-pulse">
              <div className={`w-40 h-40 bg-white rounded-[50px] shadow-2xl flex items-center justify-center mb-8 border border-slate-100`}>
