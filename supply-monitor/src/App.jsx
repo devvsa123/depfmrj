@@ -14,8 +14,6 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 const XLSX_SCRIPT_URL = "https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js";
 const WMS_URL = "https://spxj2yln4kauap03.public.blob.vercel-storage.com/planilha_estoque.xls";
 const SINGRA_URL = "https://spxj2yln4kauap03.public.blob.vercel-storage.com/planilha_rms_unificada.csv";
-const [emailText, setEmailText] = useState("");
-const [extractedOrders, setExtractedOrders] = useState([]);
 
 // --- MAPEAMENTO PADRÃO DE CORES POR STATUS ---
 const STATUS_COLOR_MAP = {
@@ -112,6 +110,8 @@ const InfoButton = ({ title, description }) => {
 const App = () => {
   const [data, setData] = useState([]);
   const [singraData, setSingraData] = useState([]); 
+  const [emailText, setEmailText] = useState("");
+  const [extractedOrders, setExtractedOrders] = useState([]);
   const [fileName, setFileName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
