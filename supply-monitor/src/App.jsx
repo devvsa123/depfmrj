@@ -1133,74 +1133,84 @@ const App = () => {
   };
 
   const renderBacklogAnalysis = () => {
-    if (!backlogAnalysis || (backlogAnalysis.totalPending === 0 && !backlogStartDate && !backlogEndDate)) {
+    // 1. Extraímos o painel de controles para ele NUNCA sumir da tela
+    const controlsPanel = (
+      <div className="bg-white p-6 rounded-[32px] border border-slate-200 shadow-sm flex flex-col xl:flex-row items-center justify-between gap-6 mb-6">
+        <div className="flex-1">
+          <h3 className="text-sm font-black text-slate-700 uppercase tracking-wider flex items-center gap-2 mb-1">
+            <ListFilter size={16} className="text-indigo-500" /> Controles da Fila (Backlog)
+          </h3>
+          <p className="text-xs text-slate-500 font-medium">Analise o envelhecimento e o status dos pedidos pendentes na operação.</p>
+        </div>
+        
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200">
+            {['TODOS', 'RMT', 'RMC'].map(type => (
+              <button
+                key={type}
+                onClick={() => setBacklogTypeFilter(type)}
+                className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${backlogTypeFilter === type ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                {type}
+              </button>
+            ))}
+          </div>
+
+          <div className="relative">
+            <label className="block text-[9px] font-black text-slate-400 uppercase mb-1">Início</label>
+            <input type="date" value={backlogStartDate} onChange={e => setBacklogStartDate(e.target.value)} className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 outline-none focus:border-indigo-500 transition-colors" />
+          </div>
+          <div className="relative">
+            <label className="block text-[9px] font-black text-slate-400 uppercase mb-1">Fim</label>
+            <input type="date" value={backlogEndDate} onChange={e => setBacklogEndDate(e.target.value)} className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 outline-none focus:border-indigo-500 transition-colors" />
+          </div>
+          
+          {(backlogStartDate || backlogEndDate || backlogTypeFilter !== "TODOS") && (
+            <button 
+              onClick={() => { setBacklogStartDate(""); setBacklogEndDate(""); setBacklogTypeFilter("TODOS"); }}
+              className="mt-5 p-2 text-slate-400 hover:text-red-500 transition-colors bg-slate-100 rounded-full"
+              title="Limpar Filtros"
+            >
+              <X size={16} />
+            </button>
+          )}
+        </div>
+      </div>
+    );
+
+    // 2. Se a fila estiver vazia, mostramos os controles + mensagem amigável
+    if (!backlogAnalysis || backlogAnalysis.totalPending === 0) {
       return (
-        <div className="mt-20 flex flex-col items-center justify-center text-center">
-          <div className="w-32 h-32 bg-emerald-50 rounded-full flex items-center justify-center mb-6"><CheckCircle2 size={48} className="text-emerald-500" /></div>
-          <h2 className="text-2xl font-black text-slate-800">Fluxo Limpo!</h2>
-          <p className="text-slate-400 mt-2">Nenhum pedido pendente encontrado.</p>
+        <div className="animate-in fade-in zoom-in duration-300">
+          {controlsPanel}
+          <div className="mt-20 flex flex-col items-center justify-center text-center">
+            <div className="w-32 h-32 bg-emerald-50 rounded-full flex items-center justify-center mb-6">
+              <CheckCircle2 size={48} className="text-emerald-500" />
+            </div>
+            <h2 className="text-2xl font-black text-slate-800">Fluxo Limpo!</h2>
+            <p className="text-slate-400 mt-2">Nenhum pedido pendente encontrado para o filtro aplicado.</p>
+          </div>
         </div>
       );
     }
+
     const metaSlaDias = 20;
 
+    // 3. Se houver dados, renderizamos os gráficos abaixo dos controles
     return (
       <div className="space-y-8 animate-in fade-in zoom-in duration-300">
         {renderBucketDetailsModal()}
         
-        <div className="bg-white p-6 rounded-[32px] border border-slate-200 shadow-sm flex flex-col xl:flex-row items-center justify-between gap-6">
-          <div className="flex-1">
-            <h3 className="text-sm font-black text-slate-700 uppercase tracking-wider flex items-center gap-2 mb-1">
-              <ListFilter size={16} className="text-indigo-500" /> Controles da Fila (Backlog)
-              <InfoButton title="Filtros Dinâmicos" description="Filtre os pedidos pendentes pela data de entrada e pelo Tipo de RM (RMT ou RMC)." />
-            </h3>
-            <p className="text-xs text-slate-500 font-medium">Analise o envelhecimento e o status dos pedidos pendentes na operação.</p>
-          </div>
-          
-          <div className="flex flex-wrap items-center gap-4">
-            {/* NOVO: Toggle Switch para o TIPO_RM */}
-            <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200">
-              {['TODOS', 'RMT', 'RMC'].map(type => (
-                <button
-                  key={type}
-                  onClick={() => setBacklogTypeFilter(type)}
-                  className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${backlogTypeFilter === type ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                >
-                  {type}
-                </button>
-              ))}
-            </div>
-
-            <div className="relative">
-              <label className="block text-[9px] font-black text-slate-400 uppercase mb-1">Início</label>
-              <input type="date" value={backlogStartDate} onChange={e => setBacklogStartDate(e.target.value)} className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 outline-none focus:border-indigo-500 transition-colors" />
-            </div>
-            <div className="relative">
-              <label className="block text-[9px] font-black text-slate-400 uppercase mb-1">Fim</label>
-              <input type="date" value={backlogEndDate} onChange={e => setBacklogEndDate(e.target.value)} className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 outline-none focus:border-indigo-500 transition-colors" />
-            </div>
-            
-            {/* O botão de limpar agora zera tudo, incluindo o tipo de RM */}
-            {(backlogStartDate || backlogEndDate || backlogTypeFilter !== "TODOS") && (
-              <button 
-                onClick={() => { setBacklogStartDate(""); setBacklogEndDate(""); setBacklogTypeFilter("TODOS"); }}
-                className="mt-5 p-2 text-slate-400 hover:text-red-500 transition-colors bg-slate-100 rounded-full"
-                title="Limpar Filtros"
-              >
-                <X size={16} />
-              </button>
-            )}
-          </div>
-        </div>
+        {controlsPanel}
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="bg-white p-8 rounded-[32px] border border-slate-200 flex flex-col justify-between h-40">
             <div className="flex items-center justify-between">
               <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-1 flex items-center gap-2"><Hourglass size={14} /> Total em Aberto</p>
-              <InfoButton title="Volume em Aberto" description="Quantidade de pedidos pendentes no fluxo (considerando o filtro de data selecionado)." />
+              <InfoButton title="Volume em Aberto" description="Quantidade de pedidos pendentes no fluxo (considerando o filtro selecionado)." />
             </div>
             <p className="text-4xl font-black text-slate-800">{backlogAnalysis.totalPending}</p>
-            <p className="text-xs text-slate-400 font-medium">{backlogStartDate || backlogEndDate ? "Visão filtrada" : "Visão histórica total"}</p>
+            <p className="text-xs text-slate-400 font-medium">{backlogStartDate || backlogEndDate || backlogTypeFilter !== "TODOS" ? "Visão filtrada" : "Visão histórica total"}</p>
           </div>
           <div className="bg-white p-8 rounded-[32px] border border-slate-200 flex flex-col justify-between h-40">
             <div className="flex items-center justify-between">
