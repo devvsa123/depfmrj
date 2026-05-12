@@ -382,10 +382,11 @@ const App = () => {
     if (!dataSet || dataSet.length === 0) return;
     const exportData = dataSet.map(item => ({
       PI: item.PI || "-",
-      PEDIDO: item.PEDIDO || item.RM || "S/N",
-      STATUS_WMS: item.STATUS || "-",
+      // O sistema agora checa se é uma RM do extrator (idOriginal) ou do banco normal (PEDIDO/RM)
+      PEDIDO: item.idOriginal || item.PEDIDO || item.RM || "S/N",
+      STATUS_WMS: item.wmsStatus || item.STATUS || "-",
       STATUS_SINGRA: item.singraStatus || "-", 
-      DATA_ENTRADA: item.entryDateIso || (item.DATA_ENTRADA ? safeGetISODate(item.DATA_ENTRADA) : "-"),
+      DATA_ENTRADA: item.dataEntrada || item.entryDateIso || (item.DATA_ENTRADA ? safeGetISODate(item.DATA_ENTRADA) : "-"),
       ...(item.daysOpen !== undefined ? { DIAS_EM_ABERTO: item.daysOpen } : {})
     }));
 
