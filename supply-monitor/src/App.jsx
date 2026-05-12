@@ -711,7 +711,7 @@ const App = () => {
     const today = new Date();
     
     const filteredData = data.filter(item => {
-      // 1. FILTRO DE TIPO RM (Agora dentro do loop, onde a variável 'item' existe)
+      // 1. FILTRO DE TIPO RM
       if (backlogTypeFilter !== "TODOS") {
         const tipo = String(item.TIPO_RM || "").toUpperCase().trim();
         if (tipo !== backlogTypeFilter) return false;
@@ -736,6 +736,15 @@ const App = () => {
       return status !== "EXPEDIDO" && status !== "CANCELADO";
     });
 
+    // NOVO: Criar mapa do Singra para cruzamento rápido da fila
+    const singraMap = {};
+    singraData.forEach(item => {
+      const p = String(item.ID || item.PEDIDO || item.RM || item.DOCUMENTO).replace(/^0+/, '').trim().toUpperCase();
+      if (p) singraMap[p] = item;
+    });
+
+    const singraStatusSummary = {}; // NOVO: Objeto que vai contar as ocorrências
+
     const pendingWithAge = pendingOrders.map(item => {
       const entryDateIso = safeGetISODate(item.DATA_ENTRADA);
       let daysOpen = 0;
@@ -743,7 +752,17 @@ const App = () => {
         const entry = new Date(entryDateIso);
         daysOpen = Math.floor((today - entry) / (1000 * 60 * 60 * 24));
       }
-      return { ...item, daysOpen, entryDateIso };
+
+      // NOVO: Cruza a RM na fila com o status atual dela no SINGRA
+      const pedidoBusca = String(item.PEDIDO || item.RM || "").replace(/^0+/, '').trim().toUpperCase();
+      const singraItem = singraMap[pedidoBusca];
+      const singraStatusRaw = singraItem ? (singraItem.SITUACAO || singraItem.STATUS) : "NÃO CONSTA";
+      const singraStatus = String(singraStatusRaw || "NÃO CONSTA").toUpperCase().trim();
+      
+      // Conta a ocorrência deste status
+      singraStatusSummary[singraStatus] = (singraStatusSummary[singraStatus] || 0) + 1;
+
+      return { ...item, daysOpen, entryDateIso, singraStatus };
     }).sort((a, b) => b.daysOpen - a.daysOpen); 
 
     const buckets = [
@@ -779,9 +798,10 @@ const App = () => {
 
     return {
       pendingOrders: pendingWithAge, buckets, totalPending, avgAge, oldestOrder, statusChartData,
-      topOffenders: pendingWithAge.slice(0, 10), uniqueStatuses
+      topOffenders: pendingWithAge.slice(0, 10), uniqueStatuses, singraStatusSummary // Exporta o resumo do Singra
     };
-  }, [data, backlogStartDate, backlogEndDate, backlogTypeFilter]);
+  // ATENÇÃO: Adicionado 'singraData' nas dependências
+  }, [data, singraData, backlogStartDate, backlogEndDate, backlogTypeFilter]);
 
   const emailResultsSummary = useMemo(() => {
     const summary = {};
@@ -1259,6 +1279,25 @@ const App = () => {
         {renderBucketDetailsModal()}
         
         {controlsPanel}
+
+        {/* NOVO: RESUMO DO STATUS SINGRA DA FILA */}
+        <div className="bg-white p-8 rounded-[40px] border border-slate-200 mb-6 shadow-sm">
+          <div className="flex items-center gap-2 mb-4">
+            <Network className="text-indigo-500" size={20} />
+            <h3 className="text-lg font-black text-slate-800">Status no SINGRA (Backlog Atual)</h3>
+            <InfoButton title="Visão Cruzada" description="Mostra em qual etapa do SINGRA estão as RMs que compõem o seu Backlog selecionado no WMS." />
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+            {Object.entries(backlogAnalysis.singraStatusSummary)
+              .sort((a, b) => b[1] - a[1]) // Ordena do maior volume para o menor
+              .map(([status, count]) => (
+                <div key={status} className="bg-slate-50 p-4 rounded-2xl border border-slate-100 shadow-sm flex flex-col justify-between">
+                  <p className="text-[9px] font-black text-slate-400 uppercase leading-tight mb-2">{status}</p>
+                  <p className="text-2xl font-black text-indigo-600">{count}</p>
+                </div>
+            ))}
+          </div>
+        </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="bg-white p-8 rounded-[32px] border border-slate-200 flex flex-col justify-between h-40">
