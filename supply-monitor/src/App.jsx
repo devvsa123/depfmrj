@@ -7,7 +7,7 @@ import {
   Upload, FileSpreadsheet, TrendingUp, CheckCircle2, Sparkles,
   Loader2, Activity, Target, Clock, AlertCircle, XCircle, Package,
   LayoutDashboard, Hourglass, AlertTriangle, ListFilter, X, Download, RefreshCw,
-  Network, Database, ArrowRightLeft, Calendar, Info, Search
+  Network, Database, ArrowRightLeft, Calendar, Info, Search, Save, Bookmark, Trash2
 } from 'lucide-react';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
@@ -145,6 +145,52 @@ const App = () => {
   const [backlogStartDate, setBacklogStartDate] = useState("");
   const [backlogEndDate, setBacklogEndDate] = useState("");
   const [backlogTypeFilter, setBacklogTypeFilter] = useState("TODOS"); // NOVO ESTADO AQUI
+
+
+
+
+
+  // --- INÍCIO DA LÓGICA DE CONSULTAS SALVAS ---------------------------------------------------------------------------------------------------------------------------
+  const [savedSearches, setSavedSearches] = useState(() => {
+    try {
+      const saved = localStorage.getItem('supplySavedSearches');
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
+  const [newSearchName, setNewSearchName] = useState("");
+
+  const handleSaveSearch = () => {
+    if (!emailText.trim() || !newSearchName.trim()) return;
+    const newSearch = { id: Date.now(), name: newSearchName, text: emailText };
+    const updated = [...savedSearches, newSearch];
+    setSavedSearches(updated);
+    localStorage.setItem('supplySavedSearches', JSON.stringify(updated));
+    setNewSearchName("");
+  };
+
+  const handleDeleteSearch = (id) => {
+    const updated = savedSearches.filter(s => s.id !== id);
+    setSavedSearches(updated);
+    localStorage.setItem('supplySavedSearches', JSON.stringify(updated));
+  };
+  // --- FIM DA LÓGICA DE CONSULTAS SALVAS ---------------------------------------------------------------------------------------------------------------------------
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
 
   const apiKey = "AIzaSyBxUWKDnpog0loQyd3tiFUguEgxwr9xh4k"; 
 
@@ -1425,6 +1471,37 @@ const renderEmailSearch = () => {
             <Search className="text-indigo-500" size={20} />
             <h3 className="text-lg font-black text-slate-800">Extrator de RM por E-mail</h3>
           </div>
+
+          {/* NOVO: PAINEL DE CONSULTAS SALVAS */}
+          {savedSearches.length > 0 && (
+            <div className="mb-6 p-4 bg-slate-50 border border-slate-100 rounded-2xl">
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                <Bookmark size={14} /> Sitreps Salvos
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {savedSearches.map(s => (
+                  <div key={s.id} className="flex items-center bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm hover:border-indigo-300 transition-all">
+                    <button 
+                      onClick={() => setEmailText(s.text)} 
+                      className="px-3 py-2 text-xs font-bold text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
+                      title="Carregar esta lista"
+                    >
+                      {s.name}
+                    </button>
+                    <div className="w-[1px] h-4 bg-slate-200"></div>
+                    <button 
+                      onClick={() => handleDeleteSearch(s.id)} 
+                      className="px-2 py-2 text-slate-300 hover:bg-red-50 hover:text-red-500 transition-colors"
+                      title="Excluir lista"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <p className="text-sm text-slate-500 mb-4 font-medium">Cole o texto do e-mail abaixo. O sistema buscará automaticamente padrões numéricos de 8 dígitos e cruzará os status.</p>
           <textarea
             value={emailText}
@@ -1432,11 +1509,31 @@ const renderEmailSearch = () => {
             placeholder="Cole o texto do e-mail aqui..."
             className="w-full h-40 p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm text-slate-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all resize-none"
           />
+
+          {/* NOVO: BOTÃO DE SALVAR CONSULTA ATUAL */}
+          {emailText.trim() && (
+            <div className="mt-4 flex flex-col md:flex-row items-center gap-3">
+              <input 
+                type="text" 
+                value={newSearchName} 
+                onChange={e => setNewSearchName(e.target.value)} 
+                placeholder="Ex: Pedido Whatsapp CMG Joao..." 
+                className="w-full md:max-w-xs px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-700 outline-none focus:border-indigo-500 shadow-sm"
+              />
+              <button 
+                onClick={handleSaveSearch}
+                disabled={!newSearchName.trim()}
+                className="w-full md:w-auto flex justify-center items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-600 rounded-xl text-sm font-bold hover:bg-indigo-100 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Save size={16} /> Salvar Lote
+              </button>
+            </div>
+          )}
         </div>
 
         {extractedOrders.length > 0 && (
           <div className="space-y-6">
-            {/* NOVO: RESUMO POR SITUAÇÃO */}
+            {/* RESUMO POR SITUAÇÃO (Já implementado antes) */}
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
               {emailResultsSummary.map(([status, count]) => (
                 <div key={status} className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
@@ -1451,7 +1548,6 @@ const renderEmailSearch = () => {
                 <h3 className="text-lg font-black text-slate-800">Resultados Encontrados ({extractedOrders.length})</h3>
                 
                 <div className="flex items-center gap-3">
-                  {/* NOVO: BOTÃO DE DOWNLOAD */}
                   <button 
                     onClick={() => handleDownloadExcel(extractedOrders, `Busca_Email_RM`)}
                     className="flex items-center gap-2 px-4 py-2 bg-emerald-50 text-emerald-600 rounded-xl text-xs font-bold hover:bg-emerald-100 transition-colors shadow-sm"
