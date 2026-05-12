@@ -660,16 +660,17 @@ const App = () => {
   }, [data, chartData, visibleRange]);
 
   const backlogAnalysis = useMemo(() => {
-    // 1. NOVO FILTRO: Valida o TIPO_RM
-    if (backlogTypeFilter !== "TODOS") {
-      const tipo = String(item.TIPO_RM || "").toUpperCase().trim();
-      if (tipo !== backlogTypeFilter) return false;
-    }
-    
     if (data.length === 0) return null;
     const today = new Date();
     
     const filteredData = data.filter(item => {
+      // 1. FILTRO DE TIPO RM (Agora dentro do loop, onde a variável 'item' existe)
+      if (backlogTypeFilter !== "TODOS") {
+        const tipo = String(item.TIPO_RM || "").toUpperCase().trim();
+        if (tipo !== backlogTypeFilter) return false;
+      }
+      
+      // 2. Filtro de Datas
       const entryDateIso = safeGetISODate(item.DATA_ENTRADA);
       if (!entryDateIso) return true;
       const itemDate = new Date(entryDateIso);
