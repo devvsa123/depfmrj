@@ -1,0 +1,107 @@
+Documentação: Supply Monitor Integrado (WMS & SINGRA)
+1. Visão Geral
+
+O Supply Monitor é um dashboard logístico focado no acompanhamento e gestão de Requisições de Material (RMs) e Pedidos de Importação (PIs). Ele atua como um hub central que unifica os dados de dois sistemas distintos: WMS e SINGRA, permitindo identificar gargalos, prever filas, analisar lead times e auditar falhas de integração (descasamentos) entre as plataformas.
+2. Tecnologias Utilizadas
+
+    Frontend: React.js (construído com Vite).
+
+    Estilização: Tailwind CSS.
+
+    Gráficos: Recharts (para gráficos de linhas, barras, áreas e pizza).
+
+    Ícones: Lucide-React.
+
+    Processamento de Planilhas: SheetJS (xlsx) via CDN, responsável por ler e converter arquivos .xls e .csv.
+
+    Inteligência Artificial: Google Generative AI (Gemini 3 Flash Preview) utilizado para gerar diagnósticos operacionais de forma automatizada.
+
+3. Arquitetura de Dados e Cache
+
+O dashboard não possui um backend de banco de dados tradicional. Ele consome dados diretamente de arquivos armazenados em nuvem (Vercel Blob):
+
+    WMS Data: planilha_estoque.xls
+
+    SINGRA Data: planilha_rms_unificada.csv
+
+Para otimizar o carregamento e evitar lentidão, o sistema implementa uma camada de cache robusta no navegador utilizando IndexedDB.
+Ao solicitar a sincronização, o sistema faz uma requisição HEAD para checar as datas de última modificação (last-modified). Se não houver mudanças, os dados cacheados são carregados quase instantaneamente.
+O sistema também permite o Upload Manual de uma planilha consolidada caso a nuvem esteja inacessível.
+4. Módulos e Funcionalidades
+
+A interface é dividida em quatro abas principais:
+4.1. Indicadores (Dashboard Principal)
+
+Esta aba concentra a visão executiva e o acompanhamento do fluxo logístico.
+
+    KPIs Principais:
+
+        Entradas e Saídas (Corte): Mede o volume que entrou e foi expedido no período.
+
+        Nível de Serviço (SLA): Percentual de pedidos expedidos em até 20 dias.
+
+        Lead Time Médio: Tempo médio de atendimento histórico e no período.
+
+        Balanço & Estimativa: Diferença entre saídas e entradas, com cálculo de quantos dias seriam necessários para zerar o backlog atual.
+
+    Consultoria AI: Um botão "Analisar" envia os dados atuais de volume e filas para o Gemini, retornando um diagnóstico operacional em texto fluido para apoiar a tomada de decisão.
+
+    Gráficos:
+
+        Filtro dinâmico (Brush) por período.
+
+        Taxa de Liberação vs Taxa de Expedição (Média Móvel de 7 dias).
+
+        Tempo de Atendimento com canal de volatilidade (desvio).
+
+        Cancelados vs Liberados (Dinâmico Mensal).
+
+        PIs Cancelados vs PIs Fornecidos (Pizza interativa com detalhamento tabular).
+
+4.2. RM em Processamento (Backlog)
+
+Focado no rastreamento de gargalos (filas de espera).
+
+    Filtros por Tipo (RMT, RMC) e range de datas.
+
+    Mostra a idade média da fila e expõe o "Pedido mais Antigo" como alerta crítico.
+
+    Gráfico de Aging: Divide as pendências em faixas de idade (0-3 dias, 4-7, 8-14, 15-30, 30+ dias).
+
+    Detalhamento (Modal): Clicar no gráfico abre uma tabela que mostra as RMs daquela faixa, com suporte a filtro textual e exportação para Excel.
+
+    Top 10 Críticos: Lista direta na tela com os maiores ofensores de tempo.
+
+4.3. Interface SINGRA x WMS
+
+Módulo de auditoria para cruzar os status lógicos entre os dois sistemas.
+
+    A varredura analisa se o que está num sistema faz sentido no outro, dividindo os resultados em 4 categorias:
+
+        Aguardando Retirada: Em Trânsito no SINGRA, mas apenas Conferido no WMS.
+
+        Aguardando Arrecadação: Expedido no WMS, mas parado no SINGRA.
+
+        Arrecadado pela OMS: Ciclo finalizado (possui filtro de período para não sobrecarregar).
+
+        Falhas de Interface: Descasamentos totais (ex: RM existe ativa no Singra e "NÃO CONSTA" no WMS, ou status lógicos incompatíveis).
+
+4.4. Busca por E-mail (Extrator Inteligente)
+
+Ferramenta rápida para checar lotes de pedidos oriundos de e-mails ou mensagens.
+
+    O usuário cola um texto qualquer no campo.
+
+    O sistema usa Regex (/\b(\d{2}\.\d{3}\.\d{3}|\d{8})\b/g) para varrer o texto e extrair todas as RMs (ex: 12.345.678 ou 12345678).
+
+    Cruza instantaneamente o array encontrado com a memória do WMS e SINGRA.
+
+    Sitreps Salvos: Permite salvar lotes frequentes no localStorage do navegador para checagem diária.
+
+5. Regras de Negócio Importantes
+
+    RMs "CANCELADAS" são automaticamente filtradas na maioria dos gráficos de tendência diária para não distorcer a média móvel.
+
+    Um botão de Exportar Excel está embutido em todas as visualizações tabulares do sistema, gerando planilhas tratadas no lado do cliente.
+
+    A paleta de cores reflete a urgência dos status (Esmeralda para sucesso, Azul/Roxo para processo, Âmbar para separação e Vermelho para pendências e erros).
