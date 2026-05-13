@@ -831,7 +831,7 @@ const App = () => {
       const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
       const result = await model.generateContent({
         contents: [{ parts: [{ text: userQuery }] }],
-        systemInstruction: { parts: [{ text: "Você é um consultor sênior de Supply Chain. Gere um diagnóstico operacional fluido, sem asteriscos ou tabelas, focado em ajudar o tomador de decisão. Use os rótulos originais: Entradas (Corte), Saídas (Corte), SLA (Até 20 dias)." }] }
+        systemInstruction: { parts: [{ text: "Você é um consultor sênior de Supply Chain. Gere um diagnóstico operacional fluido, sem asteriscos ou tabelas, focado em ajudar o tomador de decisão. Use os rótulos originais: Entradas (Corte), Saídas (Corte), Nível de Serviço (Até 20 dias)." }] }
       });
       const rawText = result.response.text();
       setAiAnalysis(rawText.replace(/[#*`>-]/g, "").trim());
@@ -1031,7 +1031,7 @@ const App = () => {
           </div>
           <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
             <div className="flex items-center justify-between mb-1">
-               <p className="text-blue-500 text-[10px] font-black uppercase tracking-widest italic">SLA (Até 20 dias)</p>
+               <p className="text-blue-500 text-[10px] font-black uppercase tracking-widest italic">Nivel de serviço (Até 20 dias)</p>
                <InfoButton title="SLA (Nível de Serviço)" description="Percentual de pedidos expedidos em até 20 dias a partir da data de entrada. Meta padrão da operação." />
             </div>
             <p className="text-2xl font-black text-slate-800">{slaAnalysis?.taxaNoPrazo}%</p>
@@ -1650,8 +1650,8 @@ const renderEmailSearch = () => {
             <div className="flex items-center gap-3 group">
               <div className="bg-indigo-600 p-2.5 rounded-2xl shadow-lg transition-transform group-hover:scale-110"><Activity className="text-white" size={24} /></div>
               <div>
-                <h1 className="text-2xl font-black text-slate-800 tracking-tight">Supply Chain <span className="text-indigo-600">DepFMRJ</span></h1>
-                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">WMS & Integração Singra</p>
+                <h1 className="text-2xl font-black text-slate-800 tracking-tight">Monitor Logístico: <span className="text-indigo-600">Dashboard de acompanhamento de RM</span></h1>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">WMS & Singra</p>
               </div>
             </div>
             <div className="flex flex-col items-end gap-2">
