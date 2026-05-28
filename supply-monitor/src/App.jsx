@@ -235,20 +235,22 @@ const App = () => {
 
     // Cruza os IDs encontrados com o WMS e o SINGRA
     const results = uniqueCleanIds.map(id => {
-      const idBusca = id.replace(/^0+/, '').toUpperCase();
-      const wmsItem = data.find(d => String(d.PEDIDO || d.RM || "").trim().replace(/^0+/, '').toUpperCase() === idBusca);
-      const singraItem = singraMap[idBusca];
-      
-      return {
-        idOriginal: id,
-        wmsStatus: wmsItem ? wmsItem.STATUS : "NÃO LOCALIZADO",
-        singraStatus: singraItem ? (singraItem.SITUACAO || singraItem.STATUS) : "NÃO CONSTA",
-        dataEntrada: wmsItem && wmsItem.DATA_ENTRADA ? safeGetISODate(wmsItem.DATA_ENTRADA) : null
-      };
-    });
+    const idBusca = id.replace(/^0+/, '').toUpperCase();
+    const wmsItem = data.find(d => String(d.PEDIDO || d.RM || "").trim().replace(/^0+/, '').toUpperCase() === idBusca);
+    const singraItem = singraMap[idBusca];
     
-    setExtractedOrders(results);
-  }, [emailText, data, singraData]);
+    return {
+      idOriginal: id,
+      wmsStatus: wmsItem ? wmsItem.STATUS : "NÃO LOCALIZADO",
+      singraStatus: singraItem ? (singraItem.SITUACAO || singraItem.STATUS) : "NÃO CONSTA",
+      dataEntrada: wmsItem && wmsItem.DATA_ENTRADA ? safeGetISODate(wmsItem.DATA_ENTRADA) : null,
+      stc: wmsItem && wmsItem.STC ? wmsItem.STC : "-", // NOVA COLUNA STC
+      dataSeparacao: wmsItem && wmsItem.DATA_SEPARACAO ? safeGetISODate(wmsItem.DATA_SEPARACAO) : null // NOVA COLUNA DATA_SEPARACAO
+    };
+  });
+  
+  setExtractedOrders(results);
+}, [emailText, data, singraData]);
 
   const safeGetISODate = (val) => {
     if (!val) return null;
@@ -428,11 +430,12 @@ const App = () => {
     if (!dataSet || dataSet.length === 0) return;
     const exportData = dataSet.map(item => ({
       PI: item.PI || "-",
-      // O sistema agora checa se é uma RM do extrator (idOriginal) ou do banco normal (PEDIDO/RM)
       PEDIDO: item.idOriginal || item.PEDIDO || item.RM || "S/N",
+      STC: item.stc || item.STC || "-", // ADICIONADO AQUI
       STATUS_WMS: item.wmsStatus || item.STATUS || "-",
       STATUS_SINGRA: item.singraStatus || "-", 
       DATA_ENTRADA: item.dataEntrada || item.entryDateIso || (item.DATA_ENTRADA ? safeGetISODate(item.DATA_ENTRADA) : "-"),
+      DATA_EXPEDICAO: item.dataSeparacao || (item.DATA_SEPARACAO ? safeGetISODate(item.DATA_SEPARACAO) : "-"), // ADICIONADO AQUI
       ...(item.daysOpen !== undefined ? { DIAS_EM_ABERTO: item.daysOpen } : {})
     }));
 
@@ -1608,15 +1611,18 @@ const renderEmailSearch = () => {
                   <thead className="bg-slate-50 text-slate-400 uppercase text-xs">
                     <tr>
                       <th className="px-6 py-4 rounded-tl-xl">RM Extraída</th>
+                      <th className="px-6 py-4">STC</th>
                       <th className="px-6 py-4">Status WMS</th>
                       <th className="px-6 py-4">Status SINGRA</th>
-                      <th className="px-6 py-4 rounded-tr-xl">Data Entrada</th>
+                      <th className="px-6 py-4">Data Entrada</th>
+                      <th className="px-6 py-4 rounded-tr-xl">Data de Expedição</th>
                     </tr>
                   </thead>
                   <tbody>
                     {extractedOrders.map((res, idx) => (
                       <tr key={idx} className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
                         <td className="px-6 py-4 font-bold text-slate-800 font-mono">{res.idOriginal}</td>
+                        <td className="px-6 py-4 font-medium text-slate-500">{res.stc}</td>
                         <td className="px-6 py-4">
                            <span className={`px-2 py-1 rounded text-xs font-bold border ${res.wmsStatus === 'NÃO LOCALIZADO' ? 'bg-slate-100 text-slate-400 border-slate-200' : 'bg-indigo-50 text-indigo-700 border-indigo-100'}`}>
                              {res.wmsStatus}
@@ -1629,6 +1635,9 @@ const renderEmailSearch = () => {
                         </td>
                         <td className="px-6 py-4 font-medium text-slate-500">
                           {res.dataEntrada ? res.dataEntrada.split('-').reverse().join('/') : '-'}
+                        </td>
+                        <td className="px-6 py-4 font-medium text-slate-500">
+                          {res.dataSeparacao ? res.dataSeparacao.split('-').reverse().join('/') : '-'}
                         </td>
                       </tr>
                     ))}
