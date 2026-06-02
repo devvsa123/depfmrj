@@ -240,12 +240,13 @@ const App = () => {
     const singraItem = singraMap[idBusca];
     
     return {
+      cam: wmsItem && wmsItem.CAM ? wmsItem.CAM : "-", // NOVA COLUNA CAM
       idOriginal: id,
       wmsStatus: wmsItem ? wmsItem.STATUS : "NÃO LOCALIZADO",
       singraStatus: singraItem ? (singraItem.SITUACAO || singraItem.STATUS) : "NÃO CONSTA",
       dataEntrada: wmsItem && wmsItem.DATA_ENTRADA ? safeGetISODate(wmsItem.DATA_ENTRADA) : null,
-      stc: wmsItem && wmsItem.STC ? wmsItem.STC : "-", // NOVA COLUNA STC
-      dataSeparacao: wmsItem && wmsItem.DATA_SEPARACAO ? safeGetISODate(wmsItem.DATA_SEPARACAO) : null // NOVA COLUNA DATA_SEPARACAO
+      stc: wmsItem && wmsItem.STC ? wmsItem.STC : "-",
+      dataSeparacao: wmsItem && wmsItem.DATA_SEPARACAO ? safeGetISODate(wmsItem.DATA_SEPARACAO) : null
     };
   });
   
@@ -429,13 +430,14 @@ const App = () => {
   const handleDownloadExcel = (dataSet, sheetName) => {
     if (!dataSet || dataSet.length === 0) return;
     const exportData = dataSet.map(item => ({
+      CAM: item.cam || item.CAM || "-", // ADICIONADO AQUI PARA EXPORTAÇÃO
       PI: item.PI || "-",
       PEDIDO: item.idOriginal || item.PEDIDO || item.RM || "S/N",
-      STC: item.stc || item.STC || "-", // ADICIONADO AQUI
+      STC: item.stc || item.STC || "-", 
       STATUS_WMS: item.wmsStatus || item.STATUS || "-",
       STATUS_SINGRA: item.singraStatus || "-", 
       DATA_ENTRADA: item.dataEntrada || item.entryDateIso || (item.DATA_ENTRADA ? safeGetISODate(item.DATA_ENTRADA) : "-"),
-      DATA_EXPEDICAO: item.dataSeparacao || (item.DATA_SEPARACAO ? safeGetISODate(item.DATA_SEPARACAO) : "-"), // ADICIONADO AQUI
+      DATA_EXPEDICAO: item.dataSeparacao || (item.DATA_SEPARACAO ? safeGetISODate(item.DATA_SEPARACAO) : "-"),
       ...(item.daysOpen !== undefined ? { DIAS_EM_ABERTO: item.daysOpen } : {})
     }));
 
@@ -1610,7 +1612,8 @@ const renderEmailSearch = () => {
                 <table className="w-full text-sm text-left text-slate-600">
                   <thead className="bg-slate-50 text-slate-400 uppercase text-xs">
                     <tr>
-                      <th className="px-6 py-4 rounded-tl-xl">RM Extraída</th>
+                      <th className="px-6 py-4 rounded-tl-xl">CAM</th> {/* NOVA COLUNA */}
+                      <th className="px-6 py-4">RM Extraída</th>
                       <th className="px-6 py-4">STC</th>
                       <th className="px-6 py-4">Status WMS</th>
                       <th className="px-6 py-4">Status SINGRA</th>
@@ -1621,6 +1624,7 @@ const renderEmailSearch = () => {
                   <tbody>
                     {extractedOrders.map((res, idx) => (
                       <tr key={idx} className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
+                        <td className="px-6 py-4 font-bold text-slate-600">{res.cam}</td> {/* NOVA COLUNA */}
                         <td className="px-6 py-4 font-bold text-slate-800 font-mono">{res.idOriginal}</td>
                         <td className="px-6 py-4 font-medium text-slate-500">{res.stc}</td>
                         <td className="px-6 py-4">
