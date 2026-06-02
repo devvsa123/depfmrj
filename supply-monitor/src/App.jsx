@@ -240,13 +240,15 @@ const App = () => {
     const singraItem = singraMap[idBusca];
     
     return {
-      cam: wmsItem && wmsItem.CAM ? wmsItem.CAM : "-", // NOVA COLUNA CAM
-      idOriginal: id,
+      cam: wmsItem && wmsItem.CAM ? wmsItem.CAM : "-",
+      idOriginal: id, // Representa a RM Extraída
+      capa: wmsItem && wmsItem.CAPA ? wmsItem.CAPA : "-", // NOVA COLUNA CAPA
+      stc: wmsItem && wmsItem.STC ? wmsItem.STC : "-",
       wmsStatus: wmsItem ? wmsItem.STATUS : "NÃO LOCALIZADO",
       singraStatus: singraItem ? (singraItem.SITUACAO || singraItem.STATUS) : "NÃO CONSTA",
       dataEntrada: wmsItem && wmsItem.DATA_ENTRADA ? safeGetISODate(wmsItem.DATA_ENTRADA) : null,
-      stc: wmsItem && wmsItem.STC ? wmsItem.STC : "-",
-      dataSeparacao: wmsItem && wmsItem.DATA_SEPARACAO ? safeGetISODate(wmsItem.DATA_SEPARACAO) : null
+      dataSeparacao: wmsItem && wmsItem.DATA_SEPARACAO ? safeGetISODate(wmsItem.DATA_SEPARACAO) : null,
+      lote: wmsItem && wmsItem.LOTE ? wmsItem.LOTE : "-" // NOVA COLUNA LOTE
     };
   });
   
@@ -430,14 +432,15 @@ const App = () => {
   const handleDownloadExcel = (dataSet, sheetName) => {
     if (!dataSet || dataSet.length === 0) return;
     const exportData = dataSet.map(item => ({
-      CAM: item.cam || item.CAM || "-", // ADICIONADO AQUI PARA EXPORTAÇÃO
-      PI: item.PI || "-",
+      CAM: item.cam || item.CAM || "-",
       PEDIDO: item.idOriginal || item.PEDIDO || item.RM || "S/N",
+      CAPA: item.capa || item.CAPA || "-", // NOVA COLUNA CAPA
       STC: item.stc || item.STC || "-", 
       STATUS_WMS: item.wmsStatus || item.STATUS || "-",
       STATUS_SINGRA: item.singraStatus || "-", 
       DATA_ENTRADA: item.dataEntrada || item.entryDateIso || (item.DATA_ENTRADA ? safeGetISODate(item.DATA_ENTRADA) : "-"),
       DATA_EXPEDICAO: item.dataSeparacao || (item.DATA_SEPARACAO ? safeGetISODate(item.DATA_SEPARACAO) : "-"),
+      LOTE: item.lote || item.LOTE || "-", // NOVA COLUNA LOTE
       ...(item.daysOpen !== undefined ? { DIAS_EM_ABERTO: item.daysOpen } : {})
     }));
 
@@ -1612,20 +1615,23 @@ const renderEmailSearch = () => {
                 <table className="w-full text-sm text-left text-slate-600">
                   <thead className="bg-slate-50 text-slate-400 uppercase text-xs">
                     <tr>
-                      <th className="px-6 py-4 rounded-tl-xl">CAM</th> {/* NOVA COLUNA */}
+                      <th className="px-6 py-4 rounded-tl-xl">CAM</th>
                       <th className="px-6 py-4">RM Extraída</th>
+                      <th className="px-6 py-4">CAPA</th> {/* NOVA COLUNA CAPA */}
                       <th className="px-6 py-4">STC</th>
                       <th className="px-6 py-4">Status WMS</th>
                       <th className="px-6 py-4">Status SINGRA</th>
                       <th className="px-6 py-4">Data Entrada</th>
-                      <th className="px-6 py-4 rounded-tr-xl">Data de Expedição</th>
+                      <th className="px-6 py-4">Data de Expedição</th>
+                      <th className="px-6 py-4 rounded-tr-xl">LOTE</th> {/* NOVA COLUNA LOTE - FINAL */}
                     </tr>
                   </thead>
                   <tbody>
                     {extractedOrders.map((res, idx) => (
                       <tr key={idx} className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
-                        <td className="px-6 py-4 font-bold text-slate-600">{res.cam}</td> {/* NOVA COLUNA */}
+                        <td className="px-6 py-4 font-bold text-slate-600">{res.cam}</td>
                         <td className="px-6 py-4 font-bold text-slate-800 font-mono">{res.idOriginal}</td>
+                        <td className="px-6 py-4 font-medium text-slate-600">{res.capa}</td> {/* NOVA COLUNA CAPA */}
                         <td className="px-6 py-4 font-medium text-slate-500">{res.stc}</td>
                         <td className="px-6 py-4">
                            <span className={`px-2 py-1 rounded text-xs font-bold border ${res.wmsStatus === 'NÃO LOCALIZADO' ? 'bg-slate-100 text-slate-400 border-slate-200' : 'bg-indigo-50 text-indigo-700 border-indigo-100'}`}>
@@ -1643,6 +1649,7 @@ const renderEmailSearch = () => {
                         <td className="px-6 py-4 font-medium text-slate-500">
                           {res.dataSeparacao ? res.dataSeparacao.split('-').reverse().join('/') : '-'}
                         </td>
+                        <td className="px-6 py-4 font-bold text-slate-600">{res.lote}</td> {/* NOVA COLUNA LOTE */}
                       </tr>
                     ))}
                   </tbody>
