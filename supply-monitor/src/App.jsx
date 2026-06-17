@@ -145,6 +145,10 @@ const App = () => {
   const [backlogStartDate, setBacklogStartDate] = useState("");
   const [backlogEndDate, setBacklogEndDate] = useState("");
   const [backlogTypeFilter, setBacklogTypeFilter] = useState("TODOS"); // NOVO ESTADO AQUI
+  // --- INÍCIO DA LÓGICA DE SAZONALIDADE (YoY) ---
+  const [selectedYoyYears, setSelectedYoyYears] = useState([]);
+  const [yoyMetrics, setYoyMetrics] = useState({ entradas: true, saidas: true });
+  // --- FIM DA LÓGICA DE SAZONALIDADE (YoY) ---
 
 
 
@@ -713,6 +717,68 @@ const App = () => {
       piStats: { delivered: piDelivered.size, cancelled: piCancelled.size, totalUnique: new Set([...piDelivered, ...piCancelled]).size }
     };
   }, [data, chartData, visibleRange]);
+
+  // --- INÍCIO: PROCESSAMENTO DO GRÁFICO YoY ---
+  const yoyAnalysis = useMemo(() => {
+    if (data.length === 0) return { chartData: [], availableYears: [] };
+
+    const filtered = data.filter(item => String(item.STATUS || "").toUpperCase().trim() !== "CANCELADO");
+    const yearSet = new Set();
+    
+    // Inicializa os 12 meses
+    const monthlyAgg = Array.from({ length: 12 }, (_, i) => {
+      const date = new Date(2000, i, 1);
+      return { 
+        monthIndex: i + 1, 
+        monthName: date.toLocaleString('pt-BR', { month: 'short' }).toUpperCase() 
+      };
+    });
+
+    filtered.forEach(item => {
+      const entryDate = safeGetISODate(item.DATA_ENTRADA);
+      const separationDate = safeGetISODate(item.DATA_SEPARACAO);
+      const status = String(item.STATUS || "").toUpperCase().trim();
+
+      // Entradas (Liberação)
+      if (entryDate) {
+        const [y, m] = entryDate.split('-');
+        const year = parseInt(y, 10);
+        const monthIdx = parseInt(m, 10) - 1;
+        if (year >= 2020) {
+          yearSet.add(year);
+          monthlyAgg[monthIdx][`${year}_entradas`] = (monthlyAgg[monthIdx][`${year}_entradas`] || 0) + 1;
+        }
+      }
+
+      // Saídas (Expedição)
+      if (separationDate && status === "EXPEDIDO") {
+        const [y, m] = separationDate.split('-');
+        const year = parseInt(y, 10);
+        const monthIdx = parseInt(m, 10) - 1;
+        if (year >= 2020) {
+          yearSet.add(year);
+          monthlyAgg[monthIdx][`${year}_saidas`] = (monthlyAgg[monthIdx][`${year}_saidas`] || 0) + 1;
+        }
+      }
+    });
+
+    const availableYears = Array.from(yearSet).sort((a, b) => b - a); // Ordena decrescente
+    return { chartData: monthlyAgg, availableYears };
+  }, [data]);
+
+  // Auto-seleciona os dois anos mais recentes ao carregar os dados
+  useEffect(() => {
+    if (yoyAnalysis.availableYears.length > 0 && selectedYoyYears.length === 0) {
+      setSelectedYoyYears(yoyAnalysis.availableYears.slice(0, 2)); 
+    }
+  }, [yoyAnalysis.availableYears, selectedYoyYears.length]);
+
+  const toggleYoyYear = (year) => {
+    setSelectedYoyYears(prev => 
+      prev.includes(year) ? prev.filter(y => y !== year) : [...prev, year].sort((a, b) => b - a)
+    );
+  };
+  // --- FIM: PROCESSAMENTO DO GRÁFICO YoY ---
 
   const backlogAnalysis = useMemo(() => {
     if (data.length === 0) return null;
@@ -1333,6 +1399,81 @@ const App = () => {
               <p className="text-4xl font-black text-red-600">{backlogAnalysis.oldestOrder ? `${backlogAnalysis.oldestOrder.daysOpen} dias` : '-'}</p>
             </div>
             <AlertTriangle className="absolute -bottom-4 -right-4 text-red-50 opacity-50" size={120} />
+          </div>
+        </div>
+
+        {/* NOVO GRÁFICO: SAZONALIDADE ANUAL (YoY) */}
+        <div className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-200 mt-6 mb-6">
+          <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-6 mb-6">
+            <div>
+              <div className="flex items-center gap-2">
+                <Calendar className="text-indigo-500" size={24} />
+                <h3 className="text-lg font-black text-slate-800">Sazonalidade e Comportamento Anual (YoY)</h3>
+                <InfoButton title="Sazonalidade" description="Sobreponha os anos para identificar tendências operacionais idênticas ao longo de meses específicos. Entradas são tracejadas; Saídas são sólidas." />
+              </div>
+            </div>
+            
+            <div className="flex flex-col sm:flex-row items-center gap-4">
+              {/* Filtro de Métricas */}
+              <div className="flex items-center bg-slate-50 p-1.5 rounded-xl border border-slate-200">
+                <button 
+                  onClick={() => setYoyMetrics(m => ({ ...m, entradas: !m.entradas }))} 
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${yoyMetrics.entradas ? 'bg-white shadow-sm text-blue-600' : 'text-slate-400'}`}
+                >
+                  Entradas (Tracejado)
+                </button>
+                <button 
+                  onClick={() => setYoyMetrics(m => ({ ...m, saidas: !m.saidas }))} 
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${yoyMetrics.saidas ? 'bg-white shadow-sm text-emerald-600' : 'text-slate-400'}`}
+                >
+                  Saídas (Sólido)
+                </button>
+              </div>
+              
+              {/* Filtro de Anos (Gerado dinamicamente) */}
+              <div className="flex flex-wrap items-center gap-2">
+                {yoyAnalysis.availableYears.map(year => (
+                  <button 
+                    key={year} 
+                    onClick={() => toggleYoyYear(year)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${selectedYoyYears.includes(year) ? 'bg-indigo-50 border-indigo-200 text-indigo-700 shadow-sm' : 'bg-white border-slate-200 text-slate-400 hover:bg-slate-50'}`}
+                  >
+                    {year}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="h-[400px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={yoyAnalysis.chartData}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <XAxis dataKey="monthName" tick={{fontSize: 10, fontWeight: 700}} axisLine={false} />
+                <YAxis tick={{fontSize: 10}} axisLine={false} />
+                <Tooltip 
+                  contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                />
+                <Legend verticalAlign="top" align="right" wrapperStyle={{ fontSize: '11px', paddingBottom: '20px', fontWeight: 600 }} />
+                
+                {selectedYoyYears.map((year, idx) => {
+                  // Paleta de cores para não misturar os anos
+                  const colors = ['#6366f1', '#f59e0b', '#10b981', '#ec4899', '#0ea5e9', '#8b5cf6'];
+                  const color = colors[idx % colors.length];
+                  
+                  return (
+                    <React.Fragment key={year}>
+                      {yoyMetrics.entradas && (
+                        <Line type="monotone" dataKey={`${year}_entradas`} name={`Entradas ${year}`} stroke={color} strokeWidth={2.5} strokeDasharray="6 6" dot={{r: 3, fill: color}} activeDot={{r: 6}} />
+                      )}
+                      {yoyMetrics.saidas && (
+                        <Line type="monotone" dataKey={`${year}_saidas`} name={`Saídas ${year}`} stroke={color} strokeWidth={3} dot={{r: 4, fill: color}} activeDot={{r: 7}} />
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </LineChart>
+            </ResponsiveContainer>
           </div>
         </div>
 
